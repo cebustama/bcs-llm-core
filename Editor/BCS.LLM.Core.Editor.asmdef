@@ -1,0 +1,10 @@
+{
+  "name": "BCS.LLM.Core.Editor",
+  "references": [
+    "BCS.LLM.Core.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": true
+}

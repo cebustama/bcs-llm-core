@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Eon.Narrative.LLM.Agents
 {
-    [CreateAssetMenu(fileName = "NewLLMAgentData", menuName = "Eon/LLMAgentData", order = 1)]
+    [CreateAssetMenu(fileName = "NewLLMAgentData", menuName = "BCS/LLM/Agent Data", order = 1)]
     public class LLMAgentData : ScriptableObject
     {
         [Header("Agent Configuration")]

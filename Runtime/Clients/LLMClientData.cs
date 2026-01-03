@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Eon.Narrative.LLM.Clients
 {
-    [CreateAssetMenu(fileName = "NewLLMClientData", menuName = "LLM/Client Configuration", order = 1)]
+    [CreateAssetMenu(fileName = "NewLLMClientData", menuName = "BCS/LLM/Client Data", order = 1)]
     public abstract class LLMClientData : ScriptableObject
     {
         public enum LLMProvider

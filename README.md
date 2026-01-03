@@ -1,168 +1,179 @@
-# BCS LLM Core (Unity) — Phase 0
+# BCS LLM Core (Unity) — v0
 
-A small, portable **Unity ↔ LLM interaction layer** extracted from the Eon project.  
-This package focuses on **providers/clients + agent configuration + prompt→response flow** and is intentionally **not** coupled to narrative systems or gameplay code.
+A small, portable **Unity ↔ LLM interaction layer** with:
+- **provider-agnostic runtime** (`ILLMClient`, `LLMClientBase`, `LLMClientFactory`)
+- an **OpenAI v0 provider** (`OpenAILLMClient`) supporting **Chat Completions** *and* **Responses**
+- **agent configuration** via ScriptableObjects (`LLMAgentData`, `LLMAgentInstructionsData`, `LLMClientData/OpenAIClientData`)
+- **Editor tooling** for local setup + testing:
+  - `LLMEnvSetupWindow` (writes only `OPENAI_API_KEY` to `.env`)
+  - `LLMAgentWizardWindow` (load agent, rebuild client, ping, prompt console, token usage, optional cost estimate, history tools)
+- a **pricing estimation pipeline** (token usage → USD estimate) via `LLMModelPricingCatalogSO` + `LLMPricingEstimator`
 
-> Status: **Phase 0** = *package skeleton + documentation* (safe to import, minimal/no runtime code required yet).
-
----
-
-## Goals
-
-- Provide a **provider-agnostic client API** to call LLMs from Unity.
-- Keep configuration in Unity-friendly **ScriptableObjects** (clients + agents + instructions).
-- Make it easy to:
-  - swap providers (OpenAI / Gemini / Azure…)
-  - define “agents” as data assets
-  - send prompts and get structured results (text + token counts)
-- Be packagable as a standalone **UPM (Unity Package Manager)** package.
-
-## Non-goals (for this core)
-
-- No narrative, quest, world-state, or Eon-specific gameplay integration.
-- No editor tooling in Phase 0 (agent creation/testing UI comes later).
-- No “agent runtime orchestration” yet (Phase 0/1 focuses on the core primitives).
+> Note on naming: some namespaces/menu paths still reflect the original extraction (e.g., `Eon.Narrative.LLM.*`). Renaming to `BCS.LLM.*` is a planned cleanup step.
 
 ---
 
-## What’s in the design (core concepts)
+## What you get (v0)
 
-The architecture is structured as three layers:
+### Runtime
+- `ILLMClient` + `LLMClientBase`: shared parameters, system instructions, and a local conversation history store.
+- `LLMClientFactory`: builds a concrete runtime client from a `LLMClientData` asset.
+- `OpenAILLMClient`: OpenAI provider implementation with two API variants:
+  - **Chat Completions** (`/v1/chat/completions`)
+  - **Responses** (`/v1/responses`) *(recommended)*
 
-1) **Agent configuration (ScriptableObjects)**  
-   - `LLMAgentData`: bundles an agent identity + instructions + a client config.
-   - `LLMAgentInstructionsData`: stores the agent’s system prompt / behavior rules.
+### Editor tools
+- **Environment setup**
+  - Minimal `.env` writing: `OPENAI_API_KEY=...`
+  - Optional `LLMEnvSettings` asset (non-secret defaults like base URL + endpoints)
+- **Agent Wizard**
+  - Select `LLMAgentData`, rebuild the runtime client, run a “ping”, send prompts, inspect token usage, optionally estimate cost, and view/clear history.
 
-2) **Client configuration (ScriptableObjects)**  
-   - `LLMClientData`: provider-agnostic configuration (model params, stop sequences, pricing, etc.).
-   - Provider-specific subclasses (e.g., `OpenAIClientData`) resolve model ids + secrets.
-
-3) **Client runtime (C# classes)**  
-   - `ILLMClient`: common contract for making requests.
-   - Provider clients (e.g., `OpenAILLMClient`) implement the actual HTTP call and parsing.
-   - `LLMClientFactory`: creates a concrete client from a `LLMClientData` asset.
-   - `EnvLoader`: optional helper to load secrets/endpoints from a `.env` or OS env vars.
+### Pricing estimation (optional)
+- `LLMCompletionResult` exposes token usage:
+  - input tokens
+  - cached input tokens (when reported)
+  - output tokens
+  - reasoning tokens (when reported)
+- `LLMPricingEstimator` computes an approximate USD cost from:
+  - token usage
+  - pricing rates (USD per 1M tokens)
+- Rates can live in:
+  - per-client fields (`LLMClientData`), or
+  - a central catalog asset (`LLMModelPricingCatalogSO`) *(recommended for tools)*
 
 ---
 
-## Phase 0: Package skeleton checklist
+## Install
 
-Phase 0 is about getting Unity to accept the package and showing clear intent.
-
-### 0.1 Folder structure (embedded package)
-
-Place this package inside your Unity project:
+### Option A — Embedded package (local dev)
+Copy this repo folder into:
 
 ```
-<YourProject>/
-  Packages/
-    com.bcs.llm-core/
-      package.json
-      README.md
-      Runtime/        (Phase 1+)
-      Editor/         (later)
-      Samples~/       (later)
+<YourUnityProject>/Packages/com.bcs.llm-core/
 ```
 
-### 0.2 `package.json` (minimum valid)
+### Option B — Git URL (recommended for teams)
+In Unity: **Package Manager → Add package from git URL…** and use your repo URL.
 
-> Important: `"name"` must be **lowercase** (UPM requirement).  
-> `displayName` can use any casing.
+### Dependencies
+The OpenAI client uses JSON parsing. Ensure your project includes:
 
-Example:
+- `com.unity.nuget.newtonsoft-json`
 
-```json
-{
-  "name": "com.bcs.llm-core",
-  "version": "0.0.1",
-  "displayName": "BCS LLM Core",
-  "unity": "6000.0",
-  "description": "Unity ↔ LLM interaction core (clients, providers, agent config)."
-}
+(Usually you add this to `package.json` as a dependency.)
+
+---
+
+## Quick start (Editor workflow)
+
+### 1) Add your OpenAI API key (local only)
+Use the **LLM Env Setup** Editor window (search for `LLMEnvSetupWindow` via Unity’s menu search) to write:
+
+```
+OPENAI_API_KEY=your_key_here
 ```
 
-If you later include the OpenAI runtime client, you will also add:
+- The tool writes **only** the key to `.env`.
+- `.env` should be ignored by git (see `.gitignore`).
 
-```json
-"dependencies": {
-  "com.unity.nuget.newtonsoft-json": "3.2.1"
-}
+### 2) (Optional) Create `LLMEnvSettings.asset`
+If your project uses `LLMEnvSettings`, place it at:
+
+```
+Assets/Resources/LLMEnvSettings.asset
 ```
 
----
+This contains **non-secret defaults** (base URL and endpoints) and can auto-load on startup.
 
-## Phase roadmap
+### 3) Create your agent assets
+Create assets (menu paths reflect current extraction):
 
-### Phase 1 — Compile-safe runtime assembly
-- Add `Runtime/` folder and an `.asmdef`:
-  - `BCS.LLM.Core.Runtime.asmdef`
-- Move the minimal core interfaces / data assets into `Runtime/`:
-  - `ILLMClient`, `LLMCompletionResult`, `ChatMessage`
-  - `LLMClientData`, `LLMAgentData`, `LLMAgentInstructionsData`
+1. **OpenAI client config**
+   - **Create → LLM → OpenAI Client Configuration**
+   - Choose:
+     - model (enum)
+     - API variant (Responses vs Chat Completions)
+     - sampling (temperature/top_p) and token limits
+2. **Instructions**
+   - **Create → Eon → LLMAgentInstructions**
+   - Write your system prompt / rules.
+3. **Agent**
+   - **Create → Eon → LLMAgentData**
+   - Assign:
+     - `AgentInstructionsData`
+     - `LlmClientData` (your OpenAI client config)
 
-### Phase 2 — Provider: OpenAI (first supported provider)
-- Add:
-  - `OpenAIClientData`
-  - `OpenAILLMClient`
-- Add the `Newtonsoft.Json` package dependency.
-- Verify a simple runtime call works (prompt → response).
+### 4) Open the Agent Wizard and test
+Open **LLMAgentWizardWindow** (via menu search), then:
 
-### Phase 3 — Factory + provider modularization
-- Decide:
-  - **OpenAI-only factory** in core (simplest), or
-  - split providers into separate packages:
-    - `com.bcs.llm-openai`
-    - `com.bcs.llm-gemini`
-    - `com.bcs.llm-azure`
-
-### Phase 4 — Env configuration cleanup (package-safe)
-- Remove project-specific defaults and Eon naming.
-- Provide either:
-  - `LLMEnvSettings` ScriptableObject (Resources-loadable), or
-  - OS env vars + `LLM_ENV_PATH` file override.
-
-### Phase 5 — EditorWindow “Agent Wizard”
-- Create/edit agent assets.
-- Test connection (ping) and prompt/response in-editor.
-- Optional: templated instruction presets and output validators.
+1. Assign your `LLMAgentData`
+2. Click **Rebuild Client**
+3. Click **Ping** (expects `pong`)
+4. Send a simple prompt (e.g., `Say "ok".`)
+5. Verify:
+   - output text displays
+   - token usage displays (when provided by the endpoint)
+   - history updates as expected
 
 ---
 
-## Security & configuration (planned)
+## Conversation history behavior (important)
 
-This core is designed so you **do not store API keys inside ScriptableObjects**.  
-Instead:
-- Use a `.env` file (local dev) and `.gitignore` it
-- or OS environment variables (CI / servers)
-
-Once Phase 4 is reached, the package will standardize:
-- required keys:
-  - `OPENAI_API_KEY`
-  - `OPENAI_BASE_URL`
-  - `OPENAI_CHAT_ENDPOINT`
+- The runtime client **always stores** conversation history after each call.
+- The Wizard can toggle whether that history is **included** in the outgoing request (“Use Conversation History”).
+- v0 achieves this without complicating the runtime API by using a UI-only snapshot/clear/merge approach.
 
 ---
 
-## Known implementation notes (from current Eon extraction)
+## Pricing estimation setup (optional)
 
-When you move code into the package (Phase 1+), keep an eye on these:
+### 1) Create a pricing catalog asset
+Create:
 
-- `LLMClientFactory` may reference providers you haven’t included yet (Gemini/Azure).  
-  You’ll want to either guard those cases with `#if` defines or move provider factories into provider-specific packages.
+- **Create → LLM → Pricing → Model Pricing Catalog**
 
-- Some “conversation history” methods exist in the interface, but a provider implementation may choose not to send history in the request (stateless-by-default).  
-  This is a deliberate design choice: history can be treated as local logging until you explicitly wire it into request payloads.
+This asset is safe to commit (non-secret).
+
+### 2) Populate pricing rates
+You have two typical approaches:
+
+- **Catalog-first (recommended for tooling):**
+  - Add entries per model you use (provider/model/tier + USD/1M rates).
+  - Optionally call `OpenAIPricingCatalogExtensions.ApplyOpenAIStandardTextDefaults(...)` to bootstrap common model IDs.
+
+- **Per-client (quick tests):**
+  - Fill `InputUSDPerMTokens`, `CachedInputUSDPerMTokens`, `OutputUSDPerMTokens` on your `LLMClientData`.
+
+The Agent Wizard can then display an **estimated cost** per request (approximate; not an invoice).
 
 ---
 
-## License / ownership
+## Manual test cases
 
-Internal BCS project extraction (adapt as needed for your repo’s licensing rules).
+See:
+- `llm-agent-wizard-test-cases.md`
 
 ---
 
-## Reference
+## Security notes
 
-The original design document for this package is based on the extracted Eon LLM core pipeline summary:
+- Do **not** commit `.env` files.
+- Avoid storing API keys in ScriptableObjects.
+- Prefer OS environment variables for CI / build agents, and local `.env` only for development.
 
-- `unity-llm-pipeline-core.md`
+---
+
+## Roadmap (next sensible steps)
+
+- Rename namespaces/menu paths from `Eon.*` → `BCS.LLM.*`
+- Add `Samples~/` with:
+  - a tiny “Hello LLM” MonoBehaviour
+  - a pre-configured Agent + ClientData sample (no secrets)
+- Add an Editor “pricing updater” flow (semi-automated monthly refresh)
+- Split providers into separate packages (`com.bcs.llm-openai`, etc.) if/when needed
+
+---
+
+## License
+TBD (internal extraction; add your preferred license before publishing publicly).

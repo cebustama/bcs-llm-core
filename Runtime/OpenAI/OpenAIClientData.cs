@@ -1,8 +1,9 @@
+using BCS.LLM.Core.Clients;
 using BCS.LLM.Core.Env;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Eon.Narrative.LLM.Clients
+namespace BCS.LLM.Core.OpenAI
 {
     [CreateAssetMenu(fileName = "NewOpenAIClientData", menuName = "LLM/OpenAI Client Configuration")]
     public class OpenAIClientData : LLMClientData
@@ -123,5 +124,19 @@ namespace Eon.Narrative.LLM.Clients
                 return LLMEnvLoader.GetOrDefault("OPENAI_RESPONSES_ENDPOINT", defaultEndpoint);
             }
         }
+
+        public string FilesEndpoint
+        {
+            get
+            {
+                var settings = Resources.Load<LLMEnvSettings>(LLMEnvLoader.SettingsResourceName);
+                var defaultEndpoint = settings != null && !string.IsNullOrWhiteSpace(settings.openAIFilesEndpoint)
+                    ? settings.openAIFilesEndpoint
+                    : "/v1/files";
+
+                return LLMEnvLoader.GetOrDefault("OPENAI_FILES_ENDPOINT", defaultEndpoint);
+            }
+        }
+
     }
 }

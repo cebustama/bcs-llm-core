@@ -1,14 +1,17 @@
 Folder PATH listing for volume SSD 2
 Volume serial number is 54D1-92B7
 D:.
+|   .gitignore
+|   make-tree.bat
 |   package.json
 |   README.md
 |   tree.txt
 |   
-+---docs
++---Documentation~
 |       llm-agent-wizard-state-and-plan.md
 |       llm-agent-wizard-test-cases.md
 |       llm-pricing-pipeline.md
+|       LLM_Core_EditorWindow_Integration_Guide.md
 |       
 +---Editor
 |       BCS.LLM.Core.Editor.asmdef

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Eon.Narrative.LLM.Clients
+namespace BCS.LLM.Core.Clients
 {
     public interface ILLMClient
     {

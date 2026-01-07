@@ -1,248 +1,248 @@
-# LLMAgentWizardWindow v0 — Manual Test Cases (UPDATED 2026-01-03)
+# LLMAgentWizardWindow v0.1 — Manual Test Cases — UPDATED 2026-01-07
 
-These are **step-by-step** test cases you can run in a clean Unity project to validate:
-- env setup
+These test cases validate:
+- env setup (no secrets in assets)
 - agent loading + client rebuild
-- Responses + Chat Completions
-- history storage vs “Use Conversation History”
-- token usage parsing
-- pricing estimate display
-- error handling
+- Chat Completions vs Responses
+- history storage vs “Use Conversation History (in request)”
+- token usage parsing + cost estimate
+- **Files (PDF)** upload + attach to Responses request
+- error handling + regressions
 
 ---
 
 ## 0) One-time setup prerequisites
 
-1. Ensure you have:
-   - `LLMEnvSettings.asset` under `Assets/Resources/` (or equivalent)
-   - `LLMEnvSetupWindow` accessible from a menu item
-2. Ensure your OpenAI key is written to `.env` as:
-   - `OPENAI_API_KEY=...`
+1. Install dependencies:
+   - `com.unity.nuget.newtonsoft-json`
+   - LLM Core package
 
-Expected:
-- No exceptions on project load.
-- Env loader logs (if you have logging) indicate the key was found.
+2. Ensure `.env` is gitignored.
 
----
+3. Create or confirm env key:
+   - Run `Tools → LLM → Env Setup`
+   - Set `OPENAI_API_KEY` in `.env`
 
-## 1) Asset wiring (smoke test)
+4. Create assets:
+   - `OpenAIClientData` (two variants recommended):
+     - A) ApiVariant = Chat
+     - B) ApiVariant = Responses
+   - (Optional) `LLMAgentInstructionsData`
+   - `LLMAgentData` referencing the chosen `OpenAIClientData`
 
-1. Create an `OpenAIClientData` asset.
-   - Set ApiVariant = **Responses** (recommended).
-   - Set a known model id you expect to work.
-2. Create an `LLMAgentInstructionsData` asset with a distinctive instruction, e.g.:
-   - “You MUST answer with exactly 3 bullet points.”
-3. Create an `LLMAgentData` asset:
-   - Assign the `OpenAIClientData`
-   - Assign the instructions asset
-
-Expected:
-- Inspector shows references are not null.
-- No warnings about missing API key.
+5. Have a PDF available locally for testing.
 
 ---
 
-## 2) Open the wizard + rebuild
-
-1. Open **LLMAgentWizardWindow** from its menu item.
-2. Select your `LLMAgentData`.
-3. Click **Rebuild Client**.
+## 1) Open Wizard
+1. Open `Tools → LLM → Agent Wizard (v0)` (menu path may vary).
+2. Confirm UI loads with no exceptions.
 
 Expected:
-- Status shows “client built” (or equivalent).
-- No exceptions in Console.
+- No compilation errors
+- Wizard shows status “Ready” or similar
 
 ---
 
-## 3) Ping (connectivity/auth)
+## 2) Assign agent & rebuild client
+1. Assign an `LLMAgentData` in the wizard.
+2. Click **Rebuild Client**.
 
+Expected:
+- Status changes to “Client rebuilt.”
+- No exceptions in Console
+
+---
+
+## 3) Ping (sanity check)
 1. Click **Ping**.
 
 Expected:
-- A response is returned quickly.
-- If you display token usage: input/output tokens are non-zero (or at least one category is non-zero).
-
-Failure modes to verify:
-- If `OPENAI_API_KEY` is missing/invalid: the wizard shows a clear error and exits busy state.
+- Status changes to “Ping OK” (or similar)
+- Response contains a short acknowledgment
 
 ---
 
-## 4) Basic prompt/response
-
-1. Enter a simple prompt:
-   - “Say 'ok'.”
-2. Send it.
-
-Expected:
-- Output text is not null.
-- History now contains at least:
-  - user prompt
-  - assistant reply
-
----
-
-## 5) Instructions application
-
-### 5.1 Agent instructions ON
-1. Toggle **Use Agent Instructions** = ON.
-2. Prompt:
-   - “Explain gravity.”
-
-Expected:
-- Output respects the instruction format (e.g., exactly 3 bullet points if that’s your rule).
-
-### 5.2 Agent instructions OFF / override
-1. Toggle **Use Agent Instructions** = OFF.
-2. Set **Override Instructions** to:
-   - “Reply with exactly one sentence.”
-3. Prompt:
-   - “Explain gravity.”
-
-Expected:
-- Output matches override rules.
-
----
-
-## 6) History storage vs history usage (critical)
-
-### 6.1 Confirm history is stored
-1. Send:
-   - “Remember that my favorite fruit is mango.”
-2. Verify history panel now shows the turn.
-
-Expected:
-- The history list clearly grew (user + assistant).
-
-### 6.2 “Use Conversation History” = ON
-1. Toggle **Use Conversation History** = ON.
-2. Send:
-   - “What is my favorite fruit?”
-
-Expected:
-- Model answers “mango” (or close).
-
-### 6.3 “Use Conversation History” = OFF (UI-only suppression)
-1. Toggle **Use Conversation History** = OFF.
-2. Send the exact same question:
-   - “What is my favorite fruit?”
-
-Expected:
-- Model should *not* reliably know (it may guess).
-- **Important:** history panel should still show the new turn *stored* after the request.
-
-If you also display token counts:
-- Input tokens should drop noticeably compared to the “history ON” case.
-
----
-
-## 7) API Variant regression: Chat Completions vs Responses
-
-1. In `OpenAIClientData`, switch ApiVariant:
-   - from **Responses** → **Chat Completions**
+## 4) Text-only prompt (Chat variant)
+1. Set ClientData ApiVariant = **Chat** (or select the agent that uses it).
 2. Rebuild client.
-3. Ping.
-4. Send a prompt.
+3. Enter prompt: `Reply with: ok`
+4. Click **Send Prompt**.
 
 Expected:
-- Still works.
-- Token usage fields populate (depending on endpoint response).
-
-Then:
-1. Switch back to **Responses**
-2. Rebuild
-3. Ping
-
-Expected:
-- Works and does not return `unknown_parameter` errors.
+- Response is “ok”
+- History adds user + assistant turn
 
 ---
 
-## 8) Token usage parsing regression (cached + reasoning)
-
-Goal: ensure these fields never crash your tooling, even if 0.
-
-1. Make a request.
-2. Confirm your UI shows:
-   - InputTokens >= 0
-   - CachedInputTokens >= 0 and <= InputTokens
-   - OutputTokens >= 0
-   - ReasoningTokens >= 0
+## 5) Text-only prompt (Responses variant)
+1. Switch to agent/client configured with ApiVariant = **Responses**.
+2. Rebuild client.
+3. Enter prompt: `Reply with: ok`
+4. Click **Send Prompt**.
 
 Expected:
-- No negative values.
-- No exceptions even when “details” fields are missing.
+- Response is “ok”
+- No `unknown_parameter` error
 
 ---
 
-## 9) Pricing estimate sanity checks
-
-### 9.1 Per-client rates
-1. In `OpenAIClientData` (or underlying `LLMClientData`), set pricing:
-   - input / cached input / output USD per 1M
-2. Make a request and confirm cost estimate displays.
-
+## 6) History policy behavior
+### 6.1 Use History ON
+1. Ensure **Use Conversation History (in request)** is ON.
+2. Send:
+   - Prompt A: `Remember the number 7. Reply ONLY 'ok'.`
+   - Prompt B: `What number did I tell you to remember? Reply with the number only.`
 Expected:
-- Total estimate > 0 for non-trivial usage.
-- If cached tokens are 0, cached cost is 0.
+- Model replies `7` (history was available)
 
-### 9.2 Catalog rates
-1. Create a `LLMModelPricingCatalogSO`.
-2. Apply OpenAI defaults.
-3. Make sure the wizard is pointing to the catalog (if supported in your v0 UI).
-4. Make a request.
-
+### 6.2 Use History OFF
+1. Toggle **Use Conversation History (in request)** OFF.
+2. Send:
+   - Prompt A: `Remember the number 9. Reply ONLY 'ok'.`
+   - Prompt B: `What number did I tell you to remember? Reply with the number only.`
 Expected:
-- Wizard resolves an entry for (provider, model, tier) and estimates cost.
+- Prompt B likely fails (history not included)
+- BUT the wizard’s local history still contains both turns
 
 ---
 
-## 10) Error handling tests
-
-### 10.1 Missing key
-1. Temporarily remove/rename `.env` or clear `OPENAI_API_KEY`.
-2. Restart Unity (or reload env loader).
-3. Ping in wizard.
-
-Expected:
-- Clean failure message.
-- Busy state clears (no stuck UI).
-
-### 10.2 Bad model id
-1. Set an invalid model id.
-2. Rebuild + send.
+## 7) Token usage parsing + clamp
+1. Send a short prompt.
+2. Confirm usage fields populate without exceptions:
+   - InputTokens, CachedInputTokens, OutputTokens, ReasoningTokens
+3. Confirm rule: `CachedInputTokens <= InputTokens` always holds.
 
 Expected:
-- Error returned from API is surfaced in UI/log.
-- No exceptions.
-
-### 10.3 Offline
-1. Disable network or block `api.openai.com`.
-2. Ping.
-
-Expected:
-- Handled exception; UI recovers.
+- No negative values
+- Cached clamped if provider returns inconsistent data
 
 ---
 
-## 11) Persistence tests (editor-only)
-
-1. Edit instructions text in the wizard.
-2. Close the wizard window.
-3. Reopen and reselect the same agent.
+## 8) Pricing estimate (optional)
+1. Enable “Estimate Cost”
+2. Assign a Pricing Catalog (or rely on ClientData pricing fields)
+3. Send a prompt
 
 Expected:
-- The instruction changes persist (SO was marked dirty + saved).
-
-Same for:
-- client config values you edit in the UI.
+- A cost estimate appears and does not crash
+- Estimate updates based on usage values
 
 ---
 
-## 12) Quick pass criteria
+## 9) Error handling — missing key
+1. Temporarily remove/rename `OPENAI_API_KEY` from `.env` (or set empty).
+2. Rebuild client.
+3. Send a prompt.
 
-You can consider v0 “green” if:
-- Ping works on both endpoints
-- history is always stored and the “Use History” toggle correctly affects context usage
-- token usage doesn’t crash and clamps cached ≤ input
-- cost estimate is stable (even if approximate)
-- no stuck busy state on errors
+Expected:
+- Request fails gracefully
+- Busy flag resets
+- Status shows an error message
+- Console contains provider error
+
+Restore the key afterwards.
+
+---
+
+# Files (PDF) tests
+
+## 10) Upload PDF → file_id
+Preconditions:
+- Client is rebuilt
+- Any ApiVariant is OK for upload (but you’ll attach only in Responses)
+
+Steps:
+1. Open **Files (PDF Upload)** panel.
+2. Click **Browse…** and select a `.pdf`.
+3. Click **Upload PDF → file_id**.
+
+Expected:
+- Status: “Uploaded …”
+- A non-empty `file_id` is shown
+- Copy button copies the `file_id` to clipboard
+- Non-PDF files are rejected
+
+---
+
+## 11) Attach PDF to a Responses request (positive test)
+Preconditions:
+- Agent uses ApiVariant = **Responses**
+- You have a valid `file_id` from §10
+- “Attach last uploaded PDF” toggle is enabled (if present)
+
+Steps:
+1. Switch to Responses agent and **Rebuild Client**.
+2. Ensure attach toggle is ON and shows the `file_id`.
+3. Send prompt:
+   - `From the attached PDF, list the species covered. Reply as a comma-separated list.`
+4. Send prompt:
+   - `From the attached PDF, quote the exact title of the document (short).`
+
+Expected:
+- Answers should clearly depend on PDF content
+- No `unknown_parameter` errors
+- Response should not look like a generic guess
+
+---
+
+## 12) Attach PDF — negative tests
+
+### 12.1 Attach ON but no file_id
+1. Clear last upload or restart wizard.
+2. Ensure attach toggle is ON (if available).
+3. Send prompt.
+
+Expected:
+- UI disables attach toggle OR soft-warns
+- Request is sent text-only (no crash)
+
+### 12.2 ApiVariant != Responses
+1. Switch to Chat agent.
+2. Rebuild client.
+3. Attempt to attach file and send prompt.
+
+Expected:
+- Wizard disables attach OR falls back to text-only with a warning
+
+### 12.3 Regression: null-field serialization
+This is the historical failure:
+- `Unknown parameter: input[0].content[0].text` (or similar)
+Cause:
+- file-part DTO serialized `text: null` on `input_file` part.
+
+Steps:
+1. Attach PDF (Responses).
+2. Send a prompt.
+
+Expected:
+- No unknown parameter errors.
+If error reappears:
+- Verify JSON serialization ignores nulls for file-part requests.
+
+---
+
+## 13) Endpoint edits require rebuild
+1. Change BaseUrl or endpoint strings in the ClientData asset.
+2. Send a prompt without rebuilding.
+
+Expected:
+- Behavior does NOT change until you click **Rebuild Client**.
+3. Rebuild client and retry.
+
+Expected:
+- New endpoints/base URL now apply.
+
+---
+
+## 14) Quick pass criteria
+Consider v0.1 “green” if:
+- Ping works
+- Chat text-only works
+- Responses text-only works
+- History policy behaves as expected (store always; optionally exclude from request)
+- Usage parsing does not crash; cached ≤ input
+- Cost estimate doesn’t crash (even if approximate)
+- PDF upload returns a valid `file_id`
+- Responses + attach reads the PDF (answers depend on file)
+- No stuck busy state on failures

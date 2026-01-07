@@ -1,118 +1,156 @@
-# LLM Agent Wizard Window — System State (v0) — UPDATED 2026-01-03
+# LLM Agent Wizard Window — System State & Plan (v0.1) — UPDATED 2026-01-07
 
-This doc tracks the current **state** of the v0 Unity Editor tooling around your provider-agnostic LLM core.
+This document describes the **current state** of the LLM Core + the **LLMAgentWizardWindow** Editor tooling, and proposes a small set of next improvements.
+
+> Scope: Unity **Editor-only** tooling and the reusable provider-agnostic runtime pipeline (LLM Core).  
+> Provider focus: **OpenAI** (Chat Completions + Responses + Files upload + Responses file attachments).
+
+---
 
 ## 0) TL;DR status
 
-- Runtime LLM core: **present**
-- Pricing pipeline: **present**
-- Env loader + Env setup window (writes `OPENAI_API_KEY` to `.env`): **present**
-- **LLMAgentWizardWindow (EditorWindow): implemented in v0** (agent load, rebuild client, ping, prompt/response console, token usage, optional cost estimate, inline edits, history tools)
+### Runtime LLM Core
+- ✅ `ILLMClient` abstraction (provider-agnostic)
+- ✅ OpenAI provider client (`OpenAILLMClient`)
+- ✅ Supports **Chat Completions** and **Responses** variants (selectable in `OpenAIClientData`)
+- ✅ Token usage parsing into `LLMCompletionResult`
+- ✅ Pricing pipeline (optional estimate)
 
-> The older “Next Work plan” is kept at the bottom as historical reference.
+### Environment / Secrets
+- ✅ `LLMEnvLoader` reads `.env` / OS env vars
+- ✅ `LLMEnvSetupWindow` writes `OPENAI_API_KEY` to local `.env`
+- ✅ No keys stored in ScriptableObjects / assets
+
+### Files (PDF) support
+- ✅ `ILLMFileClient.UploadFileAsync(...)` (OpenAI Files API)
+- ✅ Editor wizard supports: **PDF path → Upload → file_id**
+- ✅ OpenAI Responses requests can **attach file_id** (PDF-only in v0.1)
+- ✅ Important schema fix: Responses(file parts) JSON serialization must **ignore nulls** to avoid `unknown_parameter` errors.
+
+### Editor Tooling
+- ✅ `LLMAgentWizardWindow` is the canonical test harness:
+  - Agent selection + client rebuild
+  - Ping
+  - Prompt console
+  - History policy toggle (“Use Conversation History in request”)
+  - Usage display + optional cost estimate
+  - Files (PDF upload) + attach toggle (Responses only)
 
 ---
 
-## 1) Runtime Core (what the wizard builds on)
+## 1) Core architecture (what the wizard builds on)
 
-### 1.1 Client interface + base class
+### 1.1 Data assets
+- `LLMAgentData`
+  - References an `LLMClientData` (e.g. `OpenAIClientData`)
+  - Optionally references `LLMAgentInstructionsData` (instructions text)
+- `OpenAIClientData`
+  - Model, temperature, max output tokens, etc.
+  - `ApiVariant` toggle: Chat Completions vs Responses
+  - Endpoints: Chat / Responses / Files
+  - Pricing fields (optional)
 
+### 1.2 Runtime interfaces
 - `ILLMClient`
-  - shared parameters (model, temp, max output tokens, top_p, etc.)
-  - system instructions
-  - history store + helpers (`ClientConversationHistory`, `GetFormattedConversationHistory()`, `ClearHistory()`)
-  - main async call(s): `CreateChatCompletionAsync(prompt[, instructions])`
+  - `CreateChatCompletionAsync(prompt)` / `CreateChatCompletionAsync(prompt, instructions)`
+  - Manages local in-memory `ClientConversationHistory`
+- `ILLMFileClient` (optional capability)
+  - `UploadFileAsync(filePath, purpose)` → returns `file_id`
+- (Optional) `ILLMResponsesFileClient`
+  - May exist, but current wizard flow can work without it (reflection/overload based).
 
-- `LLMClientBase`
-  - stores params + history list
-  - provides default history utilities
-  - leaves provider HTTP implementation to concrete subclasses
-
-### 1.2 Provider implementation
-
-- `OpenAILLMClient`
-  - supports **Chat Completions** + **Responses**
-  - always appends history:
-    - `("user", prompt)`
-    - `("assistant", result)`
-  - returns `LLMCompletionResult` with usage when available
-
-### 1.3 Factory
-
-- `LLMClientFactory` builds a concrete `ILLMClient` from an `LLMClientData` asset (e.g., `OpenAIClientData`).
+### 1.3 Provider client: OpenAI
+`OpenAILLMClient`:
+- Uses `HttpClient` with `Authorization: Bearer <OPENAI_API_KEY>`
+- Implements:
+  - Chat Completions requests (text-only)
+  - Responses requests (text-only)
+  - Responses requests with **file parts** (`input_file` + `input_text`) **when fileIds are provided**
+  - Files API upload: `POST /v1/files` (PDF-only enforced by client)
+- Important behavior:
+  - If **no fileIds** are passed → request is **plain text** (no sticky file mode)
+  - Attaching files is **request-scoped**; file_ids are not stored in history
 
 ---
 
-## 2) Env loading & setup
+## 2) Wizard behavior (what it guarantees)
 
-- `LLMEnvLoader` loads key/value pairs from (typical order):
-  1) OS env var path override (if you have one)
-  2) `Assets/Resources/LLMEnvSettings.asset` (if present + auto-load enabled)
-  3) project root `.env`
+### 2.1 History policy (crucial invariant)
+- The runtime client always stores turns locally (`ClientConversationHistory`).
+- The wizard allows a **request policy**:
+  - **Use Conversation History (in request) ON**: history is included in the API request.
+  - **OFF**: history is temporarily replaced with an empty list for the call, then restored, and the new turn is merged back.
 
-- `LLMEnvSettings` stores *non-secret defaults* (base URL + endpoints).
+This lets you test “clean context” without losing continuity.
 
-- `LLMEnvSetupWindow` writes a minimal `.env` containing only:
-  - `OPENAI_API_KEY=...`
+### 2.2 Instructions precedence (recommended)
+1. Instructions override textarea (if enabled)
+2. Agent instructions asset (`LLMAgentInstructionsData`) (if enabled)
+3. ClientData system instructions
+4. Empty string
 
----
-
-## 3) Key behavior decision: history is always stored, sometimes used
-
-This is implemented as a **UI-only behavior** (no runtime flag needed):
-
-- The client **always stores** the full history.
-- The EditorWindow can temporarily suppress history in the outbound request by:
-  - snapshot `ClientConversationHistory`
-  - clear history
-  - send request (client appends the new turn)
-  - merge snapshot + new turn back into the client history
-
-This lets tools choose “Use Conversation History” without complicating the runtime API.
+### 2.3 Files attachment behavior (OpenAI Responses)
+- Upload step produces `file_id`.
+- Attach step is gated by:
+  - ApiVariant == **Responses**
+  - Attach toggle ON
+  - A non-empty `file_id`
+- If any condition fails, the wizard sends text-only.
 
 ---
 
-## 4) LLMAgentWizardWindow v0 features (implemented)
-
-### 4.1 Agent selection + rebuild
-- Select an `LLMAgentData` asset.
-- Rebuilds the client using the agent’s `LLMClientData` (`agent.LlmClientData`) + factory.
-
-### 4.2 Inline edits
-- Edit **instructions** inline (agent instructions asset or override text).
-- Edit client config values inline (model, temperature, tokens, etc.).
-- Edits mark SOs dirty so values persist.
-
-### 4.3 Test console
-- **Ping**: a minimal “hello” request (so you can verify auth + connectivity).
-- Prompt input + send.
-- Response display + parsed usage:
-  - input tokens
-  - cached input tokens
-  - output tokens
-  - reasoning tokens (when reported)
-
-### 4.4 Optional cost estimate
-- Displays approximate cost if pricing rates are available (per-client or via catalog + estimator).
-
-### 4.5 History tools
-- Read-only history display.
-- Clear history.
-- History include/exclude toggle (UI-only suppression described above).
+## 3) “Why Responses?” and API compatibility notes
+- The v0.1 “PDF file_id input” workflow is implemented using **OpenAI Responses** input parts:
+  - `{ type: "input_file", file_id: "..." }`
+  - `{ type: "input_text", text: "..." }`
+- The same request body must **not** include invalid fields.
+- Json.NET default behavior can serialize nulls; for file-part payloads we must ignore null fields to prevent errors like:
+  - `Unknown parameter: input[0].content[0].text`
 
 ---
 
-## 5) Known sync points to keep consistent
+## 4) Known limitations / choices
 
-1. `LLMCompletionResult` must include the same token fields your OpenAI client parses:
-   - `InputTokens`, `CachedInputTokens`, `OutputTokens`, `ReasoningTokens`
+### 4.1 PDF-only in v0.1
+- Upload enforces `.pdf`.
+- No DOCX support.
 
-2. If you have both Chat Completions and Responses supported:
-   - some parameters may be valid for one but rejected by the other.
-   - keep the request bodies conservative for `/v1/responses` (avoid sending fields that cause `unknown_parameter`).
+### 4.2 Endpoint edits require rebuild
+- `HttpClient.BaseAddress` and endpoint strings are set in `OpenAILLMClient` constructor.
+- If you edit base URL or endpoint fields on the ClientData, you must **Rebuild Client** to apply them.
+
+### 4.3 Interface vs reflection for “files in request”
+Current state:
+- The wizard can call an overload (if present) using reflection, so it doesn’t require a new runtime interface.
+
+Recommended future:
+- Prefer a capability interface (e.g. `ILLMResponsesFileClient`) to avoid reflection and to support other providers cleanly.
 
 ---
 
-## Appendix: historical “Next Work plan” (kept for reference)
+## 5) Next work plan (small, high-leverage)
 
-(The original incremental Step B0–B7 plan lives in the older version of this document.)
+### 5.1 Make file-attach capability explicit (remove reflection)
+- Implement `ILLMResponsesFileClient` on OpenAI client
+- Wizard calls interface first; reflection only as fallback (or remove reflection entirely)
+
+### 5.2 Add request diagnostics (debug-only)
+- “Log request JSON” toggle (Editor only)
+- Store last request payload in memory for copy/paste debugging
+
+### 5.3 UX improvements in Files panel
+- “Attach last uploaded file” default ON (optional)
+- Show active ApiVariant and disable/tooltip controls accordingly
+- Add “Clear last file_id” button
+
+### 5.4 Document + versioning
+- Add `CHANGELOG.md` entry:
+  - “v0.1: Added Files API upload + Responses file attachment (PDF-only)”
+
+---
+
+## 6) Regression watchlist (things that must not break)
+- Text-only paths must remain unchanged when no fileIds are supplied
+- History policy must always store turns, regardless of includeHistoryInRequest
+- CachedInputTokens must clamp ≤ InputTokens (defensive)
+- Busy flag must always reset on exceptions

@@ -1,7 +1,8 @@
+using BCS.LLM.Core.OpenAI;
 using UnityEngine;
-using static Eon.Narrative.LLM.Clients.LLMClientData;
+using static BCS.LLM.Core.Clients.LLMClientData;
 
-namespace Eon.Narrative.LLM.Clients
+namespace BCS.LLM.Core.Clients
 {
     public static class LLMClientFactory
     {

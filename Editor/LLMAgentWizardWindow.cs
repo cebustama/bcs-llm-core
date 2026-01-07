@@ -1,15 +1,16 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BCS.LLM.Core.Agents;
+using BCS.LLM.Core.Clients;
+using BCS.LLM.Core.OpenAI;
 using BCS.LLM.Core.Pricing;
-using Eon.Narrative.LLM.Agents;
-using Eon.Narrative.LLM.Clients;
 using UnityEditor;
 using UnityEngine;
 
-namespace Eon.Narrative.LLM.Editor
+namespace BCS.LLM.Core.Editor
 {
     public class LLMAgentWizardWindow : EditorWindow
     {
@@ -37,11 +38,13 @@ namespace Eon.Narrative.LLM.Editor
         private Vector2 _mainScroll;
         private Vector2 _historyScroll;
 
+        // Foildouts
         private bool _foldAgent = true;
         private bool _foldInstructions = true;
         private bool _foldClient = true;
         private bool _foldConsole = true;
         private bool _foldHistory = true;
+        private bool _foldFiles = true;
 
         // Instructions
         private bool _useAgentInstructionsAsset = true;
@@ -52,6 +55,7 @@ namespace Eon.Narrative.LLM.Editor
         private string _prompt = "Hi";
         private string _response;
         private bool _useConversationHistoryInRequest = true;
+        private bool _attachLastUploadedPdfToRequest = true;
 
         // Usage
         private LLMCompletionResult _lastResult;
@@ -62,6 +66,11 @@ namespace Eon.Narrative.LLM.Editor
         private LLMModelPricingCatalogSO _pricingCatalog;
         private LLMModelPricingCatalogSO.ServiceTier _pricingTier = LLMModelPricingCatalogSO.ServiceTier.Standard;
         private bool _treatReasoningAsOutput = true;
+
+        // Files UI state
+        private string _pdfPath;
+        private string _uploadPurpose = "user_data";
+        private LLMFileUploadResult _lastUpload;
 
         private void OnEnable()
         {
@@ -83,6 +92,9 @@ namespace Eon.Narrative.LLM.Editor
                 EditorGUILayout.Space(6);
 
                 DrawClientPanel();
+                EditorGUILayout.Space(6);
+
+                DrawFilesPanel();
                 EditorGUILayout.Space(6);
 
                 DrawConsolePanel();
@@ -338,7 +350,7 @@ namespace Eon.Narrative.LLM.Editor
 
                 // These are still useful as a fallback (or quick testing) even if you use a catalog.
                 EditorGUILayout.Space(6);
-                EditorGUILayout.LabelField("Pricing (USD per 1M tokens) � fallback", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField("Pricing (USD per 1M tokens) — fallback", EditorStyles.boldLabel);
                 float inCost = EditorGUILayout.FloatField("Input", cd.InputUSDPerMTokens);
                 float cachedInCost = EditorGUILayout.FloatField("Cached Input", cd.CachedInputUSDPerMTokens);
                 float outCost = EditorGUILayout.FloatField("Output", cd.OutputUSDPerMTokens);
@@ -376,6 +388,108 @@ namespace Eon.Narrative.LLM.Editor
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
+        private void DrawFilesPanel()
+        {
+            _foldFiles = 
+                EditorGUILayout.BeginFoldoutHeaderGroup(
+                    _foldFiles, "4) Files (PDF Upload)");
+            if (!_foldFiles)
+            {
+                EditorGUILayout.EndFoldoutHeaderGroup();
+                return;
+            }
+
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                if (_agent == null)
+                {
+                    EditorGUILayout.HelpBox("Assign an agent first.", MessageType.Info);
+                    EditorGUILayout.EndFoldoutHeaderGroup();
+                    return;
+                }
+
+                if (_client == null)
+                {
+                    EditorGUILayout.HelpBox("Client is not built. " +
+                        "Click 'Rebuild Client' first.", MessageType.Warning);
+                    EditorGUILayout.EndFoldoutHeaderGroup();
+                    return;
+                }
+
+                var fileClient = _client as ILLMFileClient;
+                if (fileClient == null)
+                {
+                    EditorGUILayout.HelpBox(
+                        "This client does not support file uploads " +
+                        "(ILLMFileClient not implemented).",
+                        MessageType.Info);
+                    EditorGUILayout.EndFoldoutHeaderGroup();
+                    return;
+                }
+
+                // Default purpose from agent (config-only)
+                if (string.IsNullOrWhiteSpace(_uploadPurpose))
+                    _uploadPurpose = !string.IsNullOrWhiteSpace(_agent.DefaultUploadPurpose)
+                        ? _agent.DefaultUploadPurpose
+                        : "user_data";
+
+                using (new EditorGUI.DisabledScope(_busy))
+                {
+                    EditorGUILayout.LabelField("PDF", EditorStyles.boldLabel);
+
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        using (new EditorGUI.DisabledScope(true))
+                            EditorGUILayout.TextField("Path", _pdfPath ?? "");
+
+                        if (GUILayout.Button("Browse...", GUILayout.Width(90)))
+                        {
+                            var p = EditorUtility.OpenFilePanel("Select PDF", "", "pdf");
+                            if (!string.IsNullOrWhiteSpace(p))
+                                _pdfPath = p;
+                        }
+                    }
+
+                    _uploadPurpose = EditorGUILayout.TextField(
+                        new GUIContent("Purpose", "OpenAI Files API 'purpose'. " +
+                        "Default: user_data"),
+                        _uploadPurpose ?? "user_data");
+
+                    EditorGUILayout.Space(6);
+
+                    using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(_pdfPath)))
+                    {
+                        if (GUILayout.Button("Upload PDF → file_id", GUILayout.Height(24)))
+                            _ = UploadPdfAsync(fileClient);
+                    }
+
+                    if (_lastUpload != null && !string.IsNullOrWhiteSpace(_lastUpload.FileId))
+                    {
+                        EditorGUILayout.Space(6);
+                        EditorGUILayout.LabelField("Last Upload", EditorStyles.boldLabel);
+
+                        using (new EditorGUI.DisabledScope(true))
+                        {
+                            EditorGUILayout.TextField("file_id", _lastUpload.FileId);
+                            EditorGUILayout.TextField("filename", _lastUpload.Filename);
+                            EditorGUILayout.LongField("bytes", _lastUpload.Bytes);
+                        }
+
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            if (GUILayout.Button("Copy file_id"))
+                                EditorGUIUtility.systemCopyBuffer = _lastUpload.FileId;
+
+                            if (GUILayout.Button("Clear"))
+                                _lastUpload = null;
+                        }
+                    }
+                }
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
         private void DrawConsolePanel()
         {
             _foldConsole = EditorGUILayout.BeginFoldoutHeaderGroup(_foldConsole, "4) Test Console");
@@ -399,17 +513,65 @@ namespace Eon.Narrative.LLM.Editor
 
                 EditorGUI.BeginDisabledGroup(_busy || _client == null);
 
-                // Toggles
+                // -------------------------
+                // Toggles (request behavior)
+                // -------------------------
                 _useConversationHistoryInRequest = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Use Conversation History (in request)", "When OFF: request is sent with empty history, but the new turn is merged back so history is still stored."),
+                    new GUIContent(
+                        "Use Conversation History (in request)",
+                        "When OFF: request is sent with empty history, but the new turn is merged back so history is still stored."),
                     _useConversationHistoryInRequest);
 
+                // Files → attach to request (Responses only)
+                bool isResponses =
+                    _agent != null &&
+                    _agent.LlmClientData is OpenAIClientData oai &&
+                    oai.ApiVariant == OpenAIClientData.OpenAIApiVariant.Responses;
+
+                bool hasFileId = _lastUpload != null && !string.IsNullOrWhiteSpace(_lastUpload.FileId);
+
+                using (new EditorGUI.DisabledScope(!isResponses || !hasFileId))
+                {
+                    _attachLastUploadedPdfToRequest = EditorGUILayout.ToggleLeft(
+                        new GUIContent(
+                            "Attach last uploaded PDF (file_id) to request (Responses only)",
+                            "When ON and a file_id exists, the next Send Prompt will include it in the Responses request.\n" +
+                            "When OFF, prompt is sent as plain text."),
+                        _attachLastUploadedPdfToRequest);
+                }
+
+                if (!isResponses)
+                {
+                    EditorGUILayout.HelpBox(
+                        "File attachments are only supported in this tool when the client uses OpenAI 'Responses' variant. " +
+                        "Switch the ClientData ApiVariant to Responses to enable attachment.",
+                        MessageType.Info);
+                }
+                else if (!hasFileId)
+                {
+                    EditorGUILayout.HelpBox(
+                        "No uploaded PDF available. Upload a PDF in the 'Files (PDF Upload)' panel to enable attachment.",
+                        MessageType.Info);
+                }
+                else if (_attachLastUploadedPdfToRequest)
+                {
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.TextField("Attached file_id", _lastUpload.FileId);
+                    }
+                }
+
+                // Instructions source
                 _useAgentInstructionsAsset = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Use Agent Instructions Asset", "When ON: uses LLMAgentInstructionsData.InstructionsText (if assigned)."),
+                    new GUIContent(
+                        "Use Agent Instructions Asset",
+                        "When ON: uses LLMAgentInstructionsData.InstructionsText (if assigned)."),
                     _useAgentInstructionsAsset);
 
                 _overrideInstructions = EditorGUILayout.ToggleLeft(
-                    new GUIContent("Override Instructions", "When ON: uses the override text below instead of agent/client instructions."),
+                    new GUIContent(
+                        "Override Instructions",
+                        "When ON: uses the override text below instead of agent/client instructions."),
                     _overrideInstructions);
 
                 if (_overrideInstructions)
@@ -418,12 +580,17 @@ namespace Eon.Narrative.LLM.Editor
                     _instructionsOverride = EditorGUILayout.TextArea(_instructionsOverride ?? "", GUILayout.MinHeight(70));
                 }
 
+                // -------------------------
+                // Cost estimation
+                // -------------------------
                 _estimateCost = EditorGUILayout.ToggleLeft("Estimate Cost", _estimateCost);
 
                 if (_estimateCost)
                 {
                     _pricingCatalog = (LLMModelPricingCatalogSO)EditorGUILayout.ObjectField(
-                        new GUIContent("Pricing Catalog (optional)", "If set, rates are read from the catalog (preferred). Otherwise falls back to ClientData pricing fields."),
+                        new GUIContent(
+                            "Pricing Catalog (optional)",
+                            "If set, rates are read from the catalog (preferred). Otherwise falls back to ClientData pricing fields."),
                         _pricingCatalog,
                         typeof(LLMModelPricingCatalogSO),
                         false);
@@ -433,13 +600,17 @@ namespace Eon.Narrative.LLM.Editor
                         _pricingTier);
 
                     _treatReasoningAsOutput = EditorGUILayout.ToggleLeft(
-                        new GUIContent("Treat reasoning tokens as output", "If ON: reasoning tokens are added to output tokens for cost estimation (common billing behavior)."),
+                        new GUIContent(
+                            "Treat reasoning tokens as output",
+                            "If ON: reasoning tokens are added to output tokens for cost estimation (common billing behavior)."),
                         _treatReasoningAsOutput);
                 }
 
                 EditorGUILayout.Space(6);
 
-                // Ping + Send row
+                // -------------------------
+                // Ping
+                // -------------------------
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     if (GUILayout.Button("Ping", GUILayout.Height(24), GUILayout.Width(110)))
@@ -450,6 +621,9 @@ namespace Eon.Narrative.LLM.Editor
 
                 EditorGUILayout.Space(6);
 
+                // -------------------------
+                // Prompt
+                // -------------------------
                 EditorGUILayout.LabelField("Prompt", EditorStyles.boldLabel);
                 _prompt = EditorGUILayout.TextArea(_prompt ?? "", GUILayout.MinHeight(120));
 
@@ -480,6 +654,7 @@ namespace Eon.Narrative.LLM.Editor
 
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
+
 
         private void DrawHistoryPanel()
         {
@@ -610,8 +785,24 @@ namespace Eon.Narrative.LLM.Editor
                 return;
             }
 
+            // Determine file_ids to attach (if any)
+            IReadOnlyList<string> fileIds = null;
+
+            bool isResponses =
+                _agent != null &&
+                _agent.LlmClientData is OpenAIClientData oai &&
+                oai.ApiVariant == OpenAIClientData.OpenAIApiVariant.Responses;
+
+            if (isResponses &&
+                _attachLastUploadedPdfToRequest &&
+                _lastUpload != null &&
+                !string.IsNullOrWhiteSpace(_lastUpload.FileId))
+            {
+                fileIds = new List<string> { _lastUpload.FileId };
+            }
+
             _busy = true;
-            _status = "Sending...";
+            _status = (fileIds != null && fileIds.Count > 0) ? "Sending (with PDF)..." : "Sending...";
             Repaint();
 
             var instructions = GetEffectiveInstructions();
@@ -626,7 +817,8 @@ namespace Eon.Narrative.LLM.Editor
                     prompt,
                     instructions,
                     includeHistoryInRequest: _useConversationHistoryInRequest,
-                    mergeNewTurnBackWhenSuppressed: true);
+                    mergeNewTurnBackWhenSuppressed: true,
+                    fileIds: fileIds);
             }
             catch (Exception ex)
             {
@@ -658,6 +850,7 @@ namespace Eon.Narrative.LLM.Editor
                 Repaint();
             };
         }
+
 
         private async void PingAsync()
         {
@@ -742,24 +935,35 @@ namespace Eon.Narrative.LLM.Editor
             };
         }
 
-        /// <summary>
-        /// UI-only history policy:
-        /// - If includeHistoryInRequest is true: call normally (history used + new turn appended).
-        /// - If false: snapshot history, swap empty list, call, then restore snapshot.
-        ///   If mergeNewTurnBackWhenSuppressed is true, merge the new turn into the restored history.
-        /// </summary>
+        private static Task<LLMCompletionResult> ExecuteWithHistoryPolicyAsync(
+    ILLMClient client,
+    string prompt,
+    string instructions,
+    bool includeHistoryInRequest,
+    bool mergeNewTurnBackWhenSuppressed)
+        {
+            return ExecuteWithHistoryPolicyAsync(
+                client,
+                prompt,
+                instructions,
+                includeHistoryInRequest,
+                mergeNewTurnBackWhenSuppressed,
+                fileIds: null);
+        }
+
         private static async Task<LLMCompletionResult> ExecuteWithHistoryPolicyAsync(
             ILLMClient client,
             string prompt,
             string instructions,
             bool includeHistoryInRequest,
-            bool mergeNewTurnBackWhenSuppressed)
+            bool mergeNewTurnBackWhenSuppressed,
+            IReadOnlyList<string> fileIds)
         {
             if (client == null)
                 throw new ArgumentNullException(nameof(client));
 
             if (includeHistoryInRequest)
-                return await client.CreateChatCompletionAsync(prompt, instructions);
+                return await CreateChatCompletionMaybeWithFilesAsync(client, prompt, instructions, fileIds);
 
             // Snapshot current history
             var snapshot = CloneHistory(client.ClientConversationHistory);
@@ -768,7 +972,7 @@ namespace Eon.Narrative.LLM.Editor
             client.ClientConversationHistory = new List<ChatMessage>();
 
             // Execute (client will append the new turn to the now-empty list)
-            var result = await client.CreateChatCompletionAsync(prompt, instructions);
+            var result = await CreateChatCompletionMaybeWithFilesAsync(client, prompt, instructions, fileIds);
 
             // Capture new turn and restore
             var newTurn = CloneHistory(client.ClientConversationHistory);
@@ -781,6 +985,39 @@ namespace Eon.Narrative.LLM.Editor
             return result;
         }
 
+        private static Task<LLMCompletionResult> CreateChatCompletionMaybeWithFilesAsync(
+            ILLMClient client,
+            string prompt,
+            string instructions,
+            IReadOnlyList<string> fileIds)
+        {
+            // Default behavior: text-only
+            if (fileIds == null || fileIds.Count == 0)
+                return client.CreateChatCompletionAsync(prompt, instructions);
+
+            if (client is ILLMResponsesFileClient responsesFileClient)
+                return responsesFileClient.CreateResponseWithFilesAsync(
+                    prompt, instructions, fileIds);
+
+            // Try to call a 3-arg overload if the concrete client provides it:
+            // CreateChatCompletionAsync(string prompt, string instructions, IReadOnlyList<string> fileIds)
+            var mi = client.GetType().GetMethod(
+                "CreateChatCompletionAsync",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
+                binder: null,
+                types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<string>) },
+                modifiers: null);
+
+            if (mi != null)
+                return (Task<LLMCompletionResult>)mi.Invoke(client, new object[] { prompt, instructions, fileIds });
+
+            Debug.LogWarning(
+                $"Client '{client.GetType().Name}' does not expose CreateChatCompletionAsync(prompt, instructions, fileIds). " +
+                "Sending text-only instead.");
+            return client.CreateChatCompletionAsync(prompt, instructions);
+        }
+
+
         private static List<ChatMessage> CloneHistory(List<ChatMessage> src)
         {
             if (src == null) return new List<ChatMessage>();
@@ -792,6 +1029,35 @@ namespace Eon.Narrative.LLM.Editor
             }
             return dst;
         }
+
+        private async Task UploadPdfAsync(ILLMFileClient fileClient)
+        {
+            if (_busy) return;
+
+            _busy = true;
+            _status = "Uploading PDF...";
+            Repaint();
+
+            try
+            {
+                _lastUpload = await fileClient.UploadFileAsync(
+                    _pdfPath,
+                    string.IsNullOrWhiteSpace(_uploadPurpose) ? "user_data" : _uploadPurpose);
+
+                _status = $"Upload OK. file_id = {_lastUpload.FileId}";
+            }
+            catch (Exception ex)
+            {
+                _status = $"Upload FAILED: {ex.Message}";
+                Debug.LogException(ex);
+            }
+            finally
+            {
+                _busy = false;
+                Repaint();
+            }
+        }
+
 
         // -------------------------
         // UI helpers
@@ -913,8 +1179,8 @@ namespace Eon.Narrative.LLM.Editor
                         EditorGUILayout.HelpBox(
                             "No pricing data available.\n\n" +
                             "To enable cost estimates:\n" +
-                            "� Assign a Pricing Catalog that includes this provider/model, or\n" +
-                            "� Fill the ClientData pricing fields (USD per 1M tokens).",
+                            "• Assign a Pricing Catalog that includes this provider/model, or\n" +
+                            "• Fill the ClientData pricing fields (USD per 1M tokens).",
                             MessageType.Info);
                         return;
                     }

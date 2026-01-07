@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Eon.Narrative.LLM.Agents
+namespace BCS.LLM.Core.Agents
 {
     [CreateAssetMenu(
         fileName = "NewLLMAgentInstructions", 

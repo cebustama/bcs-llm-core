@@ -24,5 +24,8 @@ namespace BCS.LLM.Core.Env
 
         [Tooltip("Default Responses endpoint used when OPENAI_RESPONSES_ENDPOINT is not provided.")]
         public string openAIResponsesEndpoint = "/v1/responses";
+
+        [Tooltip("Default Files endpoint used when OPENAI_FILES_ENDPOINT is not provided.")]
+        public string openAIFilesEndpoint = "/v1/files";
     }
 }

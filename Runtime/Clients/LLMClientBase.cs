@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace Eon.Narrative.LLM.Clients
+namespace BCS.LLM.Core.Clients
 {
     public class LLMClientBase : ILLMClient
     {

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Eon.Narrative.LLM.Clients
+namespace BCS.LLM.Core.Clients
 {
     [CreateAssetMenu(fileName = "NewLLMClientData", menuName = "BCS/LLM/Client Data", order = 1)]
     public abstract class LLMClientData : ScriptableObject

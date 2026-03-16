@@ -1,3 +1,16 @@
+# ARCHIVED — llm-agent-wizard-state-and-plan.md
+
+**Superseded on:** 2026-03-16  
+**Replaced by:**
+- `../CURRENT_STATE.md`
+- `../planning/Roadmap_LLM_Core.md`
+- `../SSoT_Runtime_and_OpenAI_Provider.md`
+- `../SSoT_Editor_Tooling_and_Wizard.md`
+
+**Reason:** this file mixed current state, roadmap, runtime truth, editor truth, and historical notes in one place.
+
+---
+
 # LLM Agent Wizard Window — System State & Plan (v0.1) — UPDATED 2026-01-07
 
 This document describes the **current state** of the LLM Core + the **LLMAgentWizardWindow** Editor tooling, and proposes a small set of next improvements.
@@ -154,3 +167,4 @@ Recommended future:
 - History policy must always store turns, regardless of includeHistoryInRequest
 - CachedInputTokens must clamp ≤ InputTokens (defensive)
 - Busy flag must always reset on exceptions
+

@@ -12,7 +12,7 @@ namespace BCS.LLM.Core.Env
         [Tooltip("If true, the loader attempts to load envFilePath on first access.")]
         public bool autoLoadOnStartup = true;
 
-        [Tooltip("If true, missing keys fall back to OS environment variables.")]
+        [Tooltip("If true, keys missing from loaded env data fall back to OS environment variables.")]
         public bool allowOsEnvFallback = true;
 
         [Header("OpenAI Defaults (non-secret)")]

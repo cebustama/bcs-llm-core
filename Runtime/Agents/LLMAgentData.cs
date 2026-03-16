@@ -25,5 +25,13 @@ namespace BCS.LLM.Core.Agents
 
         [Header("Conversation History")]
         public List<string> InitialHistory;
+
+        // --------------------------------------------------------------------
+        // Legacy aliases (NO duplicate serialized state)
+        // --------------------------------------------------------------------
+        // These are *properties*, not fields. They DO NOT create new data in the asset.
+        // They exist only to keep older code compiling if it still references old names.
+        public LLMAgentInstructionsData InstructionsAsset => AgentInstructionsData;
+        public LLMClientData ClientData => LlmClientData;
     }
 }

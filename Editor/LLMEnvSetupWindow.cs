@@ -1,4 +1,4 @@
-using System.IO;
+ï»¿using System.IO;
 using System.Text;
 using BCS.LLM.Core.Env;
 using UnityEditor;
@@ -18,7 +18,7 @@ namespace BCS.LLM.Core.Editor
         // Minimal OpenAI key for v0
         private const string KeyOpenAIApiKey = "OPENAI_API_KEY";
 
-        // Where we’ll create the settings asset (must be under Resources to be auto-loaded by LLMEnvLoader)
+        // Where weï¿½ll create the settings asset (must be under Resources to be auto-loaded by LLMEnvLoader)
         private const string ResourcesFolderPath = "Assets/Resources";
         private const string SettingsAssetPath = "Assets/Resources/LLMEnvSettings.asset";
 
@@ -36,6 +36,7 @@ namespace BCS.LLM.Core.Editor
         private string _resolvedEnvPath;
         private bool _envFileExists;
         private bool _hasApiKey;
+        private bool _effectiveAllowOsEnvFallback;
 
         [MenuItem("Tools/LLM/Env Setup")]
         public static void Open()
@@ -63,6 +64,8 @@ namespace BCS.LLM.Core.Editor
 
             _resolvedEnvPath = LLMEnvLoader.ResolvePath(_envFilePath);
             _envFileExists = !string.IsNullOrWhiteSpace(_resolvedEnvPath) && File.Exists(_resolvedEnvPath);
+
+            _effectiveAllowOsEnvFallback = LLMEnvLoader.IsOsEnvFallbackAllowed();
 
             // Ask loader whether OPENAI_API_KEY is currently available (env file and/or OS env)
             _hasApiKey = LLMEnvLoader.HasNonEmpty(KeyOpenAIApiKey);
@@ -97,7 +100,8 @@ namespace BCS.LLM.Core.Editor
             EditorGUILayout.HelpBox(
                 "This window helps you configure env loading for the LLM package.\n\n" +
                 "Recommended: keep a .env file at project root (\".env\") and store only OPENAI_API_KEY.\n" +
-                "Base URL and endpoints should be handled by defaults/config (not entered here).",
+                "Base URL and endpoints should be handled by defaults/config (not entered here).\n\n" +
+                "The allowOsEnvFallback setting now controls whether missing keys may fall back to OS environment variables.",
                 MessageType.Info);
         }
 
@@ -115,6 +119,7 @@ namespace BCS.LLM.Core.Editor
                     string.IsNullOrWhiteSpace(_resolvedEnvPath) ? "(invalid)" : _resolvedEnvPath);
 
                 EditorGUILayout.LabelField(".env file exists:", _envFileExists ? "YES" : "NO");
+                EditorGUILayout.LabelField("OS env fallback enabled:", _effectiveAllowOsEnvFallback ? "YES" : "NO");
                 EditorGUILayout.LabelField("OPENAI_API_KEY available:", _hasApiKey ? "YES" : "NO");
 
                 EditorGUILayout.Space(4);
@@ -143,7 +148,8 @@ namespace BCS.LLM.Core.Editor
             {
                 EditorGUILayout.HelpBox(
                     "LLMEnvSettings is optional. If present in Assets/Resources/LLMEnvSettings.asset and auto-load is enabled, " +
-                    "the loader will use its envFilePath automatically.",
+                    "the loader will use its envFilePath automatically.\n\n" +
+                    "allowOsEnvFallback controls whether missing keys may fall back to OS environment variables.",
                     MessageType.None);
 
                 _envFilePath = EditorGUILayout.TextField(new GUIContent("envFilePath"), _envFilePath);
@@ -230,7 +236,7 @@ namespace BCS.LLM.Core.Editor
                         LLMEnvLoader.Reload();
                         RefreshStatus();
 
-                        // Optional: clear the field after writing so it’s not lingering in UI state
+                        // Optional: clear the field after writing so itï¿½s not lingering in UI state
                         _openAIApiKey = "";
                     }
                 }

@@ -60,9 +60,11 @@ namespace BCS.LLM.Core.Clients
 
         public override string ToString()
         {
+            var apiKeySummary = string.IsNullOrWhiteSpace(ApiKey) ? "(missing)" : "<redacted>";
+
             return $"Provider: {Provider}\n" +
                 $"Model: {ModelString}\n" +
-                $"API Key: {ApiKey}\n" +
+                $"API Key: {apiKeySummary}\n" +
                 $"Base URL: {BaseUrl}\n" +
                 $"Temperature: {Temperature}\n" +
                 $"Max Output Tokens: {MaxOutputTokens}\n" +

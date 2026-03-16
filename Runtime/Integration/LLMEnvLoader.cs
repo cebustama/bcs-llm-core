@@ -115,9 +115,23 @@ namespace BCS.LLM.Core.Env
             if (_vars.TryGetValue(key, out value))
                 return true;
 
-            // Optional OS fallback (always on here; you can gate it via settings if you want)
+            if (!IsOsEnvFallbackAllowed())
+            {
+                value = null;
+                return false;
+            }
+
             value = Environment.GetEnvironmentVariable(key);
-            return value != null;
+            return !string.IsNullOrEmpty(value);
+        }
+
+        public static bool IsOsEnvFallbackAllowed()
+        {
+            var settings = Resources.Load<LLMEnvSettings>(SettingsResourceName);
+            if (settings == null)
+                return true; // default behavior when no settings asset exists
+
+            return settings.allowOsEnvFallback;
         }
 
         public static string GetOrDefault(string key, string defaultValue)

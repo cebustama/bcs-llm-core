@@ -1,3 +1,20 @@
+# LLM Agent Wizard — Manual Test Cases
+
+**Status:** Active reference  
+**Doc Type:** Validation / Manual Regression Reference  
+**Authority:** Secondary  
+**Date:** 2026-03-16
+
+## Usage note
+This file validates current behavior but does not define subsystem truth. If a test description and an SSoT disagree, the SSoT wins and the test doc must be updated.
+
+Primary authority docs:
+- `../SSoT_Runtime_and_OpenAI_Provider.md`
+- `../SSoT_Editor_Tooling_and_Wizard.md`
+- `../SSoT_Pricing_Pipeline.md`
+
+---
+
 # LLMAgentWizardWindow v0.1 — Manual Test Cases — UPDATED 2026-01-07
 
 These test cases validate:
@@ -143,6 +160,21 @@ Expected:
 
 Restore the key afterwards.
 
+### 9.1 Missing key with OS fallback disabled
+Preconditions:
+- `allowOsEnvFallback` is OFF in `LLMEnvSettings`
+- the `.env` file does not contain `OPENAI_API_KEY`
+
+Steps:
+1. Save the settings asset with `allowOsEnvFallback = false`.
+2. Reload the env loader.
+3. Rebuild client.
+4. Send a prompt.
+
+Expected:
+- The request fails even if your operating system has `OPENAI_API_KEY` set globally.
+- This confirms the setting is actively enforced.
+
 ---
 
 # Files (PDF) tests
@@ -204,6 +236,8 @@ Expected:
 
 Expected:
 - Wizard disables attach OR falls back to text-only with a warning
+- Preferred path is the explicit `ILLMResponsesFileClient` capability.
+- Reflection-based fallback, if it occurs, should be treated as compatibility behavior only.
 
 ### 12.3 Regression: null-field serialization
 This is the historical failure:
@@ -246,3 +280,4 @@ Consider v0.1 “green” if:
 - PDF upload returns a valid `file_id`
 - Responses + attach reads the PDF (answers depend on file)
 - No stuck busy state on failures
+

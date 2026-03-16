@@ -1,3 +1,13 @@
+# ARCHIVED / ABSORBED — llm-pricing-pipeline.md
+
+**Superseded on:** 2026-03-16  
+**Replaced by:**
+- `../SSoT_Pricing_Pipeline.md`
+
+**Reason:** pricing is now governed as a subsystem SSoT instead of a standalone explanatory note.
+
+---
+
 # LLM Pricing Pipeline (BCS.LLM.Core) — UPDATED 2026-01-03
 
 This document explains the **pricing part** of the Unity ↔ LLM pipeline in the package: how token usage is collected from provider responses, how pricing rates are stored, and how approximate request cost is estimated for display in tools (e.g., your Agent/Wizard windows).
@@ -133,3 +143,4 @@ Tools (like the wizard) typically:
    - Warn if any catalog entries used by active agents have 0 rates.
 3. Persist per-request logs
    - Store timestamp, model, tokens, estimated cost for later analysis.
+

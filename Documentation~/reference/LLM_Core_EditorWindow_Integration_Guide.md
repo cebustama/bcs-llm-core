@@ -1,3 +1,26 @@
+# LLM Core EditorWindow Integration Guide
+
+**Status:** Active reference  
+**Doc Type:** Reference / Integration Guide  
+**Authority:** Secondary  
+**Date:** 2026-03-16
+
+## Current alignment notes
+This document is kept as reusable implementation guidance, not as the primary truth for package semantics.
+
+Before using it, also check:
+- `../SSoT_Runtime_and_OpenAI_Provider.md`
+- `../SSoT_Editor_Tooling_and_Wizard.md`
+- `../SSoT_CONTRACTS.md`
+
+### Corrections relative to older wording
+- File attach support is no longer merely a hypothetical “could use an interface” design. The current package already has an explicit `ILLMResponsesFileClient` capability interface.
+- Reflection should be understood as a compatibility fallback in editor integration patterns, not the preferred primary design.
+- Effective instructions precedence is authoritative in the editor SSoT and contracts docs.
+- Env/secrets policy is governed by SSoT docs; this guide should not redefine it.
+
+---
+
 # LLM Core Integration Guide (Unity EditorWindow) — v0 Pattern (UPDATED)
 
 This document explains a **reusable pattern** to embed a small **“LLM Tools (v0)” panel** inside any existing Unity `EditorWindow`.
@@ -49,6 +72,7 @@ Install:
 Use the env setup workflow:
 - Store `OPENAI_API_KEY` in a local `.env` (gitignored), or OS env vars for CI
 - Do **not** store keys in ScriptableObjects or serialized editor fields
+- If `allowOsEnvFallback` is disabled in `LLMEnvSettings`, missing keys will no longer fall back to OS environment variables
 
 ### 2.4 Minimum agent assets
 Create:
@@ -291,11 +315,11 @@ So your “execute” helper can accept an optional `IReadOnlyList<string> fileI
 - call a file-capable method when available
 - otherwise fall back to text-only
 
-**Recommended approach (no new interface required):**
+**Recommended approach (preferred current design):**
 - keep `ILLMClient` unchanged
-- in Editor code, attempt to call a known overload via:
-  - safe cast to OpenAI client type, **or**
-  - reflection (if you want to avoid referencing provider types directly)
+- prefer an explicit optional capability interface for Responses-with-files (`ILLMResponsesFileClient`)
+- in Editor code, call that interface first
+- keep reflection only as a compatibility fallback when supporting older concrete clients that still expose a compatible overload
 
 ---
 
@@ -442,3 +466,4 @@ Once the basic panel works:
 Store this guide under one of:
 - `Docs/LLM/LLM_Core_EditorWindow_Integration_Guide.md`
 - `Documentation~/LLM_Core_EditorWindow_Integration_Guide.md` (Unity package convention)
+

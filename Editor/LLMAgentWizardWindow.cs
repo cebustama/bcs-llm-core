@@ -390,7 +390,7 @@ namespace BCS.LLM.Core.Editor
 
         private void DrawFilesPanel()
         {
-            _foldFiles = 
+            _foldFiles =
                 EditorGUILayout.BeginFoldoutHeaderGroup(
                     _foldFiles, "4) Files (PDF Upload)");
             if (!_foldFiles)
@@ -995,12 +995,13 @@ namespace BCS.LLM.Core.Editor
             if (fileIds == null || fileIds.Count == 0)
                 return client.CreateChatCompletionAsync(prompt, instructions);
 
+            // Preferred path: explicit optional capability interface.
             if (client is ILLMResponsesFileClient responsesFileClient)
                 return responsesFileClient.CreateResponseWithFilesAsync(
                     prompt, instructions, fileIds);
 
-            // Try to call a 3-arg overload if the concrete client provides it:
-            // CreateChatCompletionAsync(string prompt, string instructions, IReadOnlyList<string> fileIds)
+            // Compatibility fallback only:
+            // try a 3-arg overload if the concrete client still exposes it.
             var mi = client.GetType().GetMethod(
                 "CreateChatCompletionAsync",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
@@ -1008,12 +1009,17 @@ namespace BCS.LLM.Core.Editor
                 types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<string>) },
                 modifiers: null);
 
-            if (mi != null)
+            if (mi != null && typeof(Task<LLMCompletionResult>).IsAssignableFrom(mi.ReturnType))
+            {
+                Debug.LogWarning(
+                    $"Client '{client.GetType().Name}' does not implement ILLMResponsesFileClient. " +
+                    "Using compatibility reflection fallback for file attachment.");
                 return (Task<LLMCompletionResult>)mi.Invoke(client, new object[] { prompt, instructions, fileIds });
+            }
 
             Debug.LogWarning(
-                $"Client '{client.GetType().Name}' does not expose CreateChatCompletionAsync(prompt, instructions, fileIds). " +
-                "Sending text-only instead.");
+                $"Client '{client.GetType().Name}' does not support request file attachment via ILLMResponsesFileClient " +
+                "and does not expose a compatible fallback overload. Sending text-only instead.");
             return client.CreateChatCompletionAsync(prompt, instructions);
         }
 

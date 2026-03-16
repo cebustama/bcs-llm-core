@@ -1,8 +1,8 @@
 {
   "name": "com.bcs.llm-core",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "displayName": "BCS LLM Core",
-  "description": "Provider-agnostic Unity ↔ LLM client layer + agent/config ScriptableObjects.",
+  "description": "Provider-agnostic Unity \u2194 LLM client layer + agent/config ScriptableObjects.",
   "unity": "2022.3",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1"

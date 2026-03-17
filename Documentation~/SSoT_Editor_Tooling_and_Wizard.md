@@ -2,13 +2,13 @@
 
 **Status:** Active  
 **Authority:** Primary for editor orchestration and wizard behavior  
-**Date:** 2026-03-16
+**Date:** 2026-03-17
 
 ## Scope
 This document defines the implemented truth for:
 - `LLMEnvSetupWindow`,
 - `LLMAgentWizardWindow`,
-- editor-layer policies around instructions, rebuilds, history usage, and file flow.
+- editor-layer policies around instructions, rebuilds, history usage, file flow, and editor-owned workflow bridging.
 
 ## 1) Canonical editor surfaces
 
@@ -105,7 +105,15 @@ Current editor tooling is intentionally pragmatic:
 - one canonical wizard,
 - no heavy provider abstraction in UI,
 - explicit rebuild requirement,
-- optional pricing and file tooling.
+- optional pricing and file tooling,
+- editor-owned manual retry UX/state when a tool needs targeted or selective retry flows.
+
+Phase 4 / Phase 5 alignment:
+- shared retry-classification surfaces are runtime-facing and optional, not editor-only configuration,
+- shared orchestration surfaces now exist in runtime, but editor windows still own entrypoint selection, busy state, attempt counters, selective-retry toggles, and human-visible status,
+- editor/project code may translate a shared `RetryDirective` back into local prompt-builder calls or route a narrow subflow through `LinearWorkflowRunner`,
+- `PromptExecutionHelper` remains single-shot and is not replaced by editor UI code,
+- Phase 5 does not require a generic workflow UI and does not move project-specific apply/replacement logic into shared core.
 
 ## 9) Active cleanup/polish items
 - Add request diagnostics / payload visibility for debugging.

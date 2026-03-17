@@ -3,7 +3,7 @@
 **Status:** Active reference  
 **Doc Type:** Reference / Integration Guide  
 **Authority:** Secondary  
-**Date:** 2026-03-16
+**Date:** 2026-03-17
 
 ## Current alignment notes
 This document is kept as reusable implementation guidance, not as the primary truth for package semantics.
@@ -18,6 +18,7 @@ Before using it, also check:
 - Reflection should be understood as a compatibility fallback in editor integration patterns, not the preferred primary design.
 - Effective instructions precedence is authoritative in the editor SSoT and contracts docs.
 - Env/secrets policy is governed by SSoT docs; this guide should not redefine it.
+- Shared retry-classification surfaces now exist, but they do not imply a generic retry UI. Editor/project code still owns retry buttons, attempt counters, status text, and local prompt-bridge logic.
 
 ---
 
@@ -55,6 +56,21 @@ This is intentionally the **same pattern** as the Agent Wizard:
 - runtime is provider-agnostic (`ILLMClient`)
 - EditorWindow orchestration controls history policy and UI state
 - file upload is an optional capability (`ILLMFileClient`)
+
+### Phase 4 / Phase 5 alignment note
+If your EditorWindow adds post-validation retry or small multi-step flows, keep the boundary narrow:
+- shared core may classify retryability into `RetryDirective` results,
+- shared core may also coordinate a narrow linear subflow through `LinearWorkflowRunner`,
+- the EditorWindow (or project runtime bridge) still decides which local entrypoint to call,
+- domain-shaped retry payload reconstruction stays local,
+- `PromptExecutionHelper` stays single-shot and does not become the retry orchestrator.
+
+A practical pattern is:
+1. build a local typed workflow state,
+2. route build/execute through shared runtime steps,
+3. keep parse/validate/retry-classify steps project-owned unless stronger reuse is proven,
+4. use an agent/project-owned re-entry adapter for the next attempt,
+5. keep apply/upsert and editor UX outside shared orchestration.
 
 ---
 

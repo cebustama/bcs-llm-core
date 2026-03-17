@@ -1,18 +1,36 @@
 # Recommended addition — Documentation update protocol
 
-Add a short block like this to `SSoT_INDEX.md` or `Documentation~/README.md`:
+Add a short local reminder to `SSoT_INDEX.md` (preferred) or `Documentation~/README.md` so the update loop stays visible in day-to-day package work.
 
-## Documentation update protocol
-After every meaningful technical change, update documentation in this order:
+## Short rule
+After every meaningful technical change:
 
-1. Update the authoritative SSoT or `SSoT_CONTRACTS.md` for the concept that changed.
-2. Update `CURRENT_STATE.md` if the operational reality, priorities, or known deltas changed.
-3. Update `changelog-ssot.md` if meaning, contract, authority, or behavioral interpretation changed.
-4. Update `coverage-matrix.md` only if the primary home of a concept changed.
-5. Update reference/test docs if user-facing workflows or expected behaviors changed.
-6. Archive or mark any superseded docs.
+1. **Identify what concept actually changed.**
+2. **Find its primary home in `coverage-matrix.md`.**
+3. **Update that primary SSoT first.**
+4. Then apply the follow-up rules:
+   - update `CURRENT_STATE.md` if operational reality or active focus changed,
+   - update `changelog-ssot.md` if meaning, contract, authority, or interpretation changed,
+   - update `coverage-matrix.md` only if the concept’s primary home changed,
+   - update reference/test docs only if workflow or usage pattern changed.
 
-A technical change is not considered complete until the required documentation updates are done.
+A technical change is not complete until the required documentation updates are done.
+
+## Minimum file set for deciding what needs updates
+You usually do **not** need to send every documentation file to determine the update set.
+
+The minimum decision batch is normally:
+- `SSoT_INDEX.md`
+- `coverage-matrix.md`
+- `CURRENT_STATE.md`
+- `changelog-ssot.md`
+- the suspected primary SSoT(s) for the changed concept
+
+This is usually enough to answer:
+- what changed,
+- where authoritative truth lives,
+- which derived docs are impacted,
+- whether a change is semantic, operational, or only reference-level.
 
 ## Why this belongs here
-The reusable guideline already defines this process formally, but the package should also keep a short local reminder in its own entry-point docs so the maintenance loop stays visible during day-to-day work.
+The broader reusable governance guideline already defines the process formally, but the package should also keep a short local version so the maintenance loop remains visible while doing implementation work.

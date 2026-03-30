@@ -2,7 +2,7 @@
 
 **Status:** Active  
 **Authority:** Primary for cross-cutting shared semantics  
-**Date:** 2026-03-17
+**Date:** 2026-03-29 (updated — serializer audit invariant added)
 
 ## Purpose
 This document stores rules and definitions that span runtime, provider, editor tooling, pricing, reusable prompt composition, and the extracted validation / repair / retry-classification / orchestration extension surfaces.
@@ -217,6 +217,28 @@ That path does **not** require:
 - orchestration surfaces.
 
 Those are additive capabilities, not mandatory prerequisites for a simple agent integration.
+
+### 17) Serializer pre-migration audit rule
+When adopting the Prompt Builder path in an existing project, the request serializer
+must be verified for field completeness **before** building any adapter or running any
+prompt-parity comparison.
+
+- Serialize a representative domain object with the current serializer.
+- Confirm that every expected field — especially collections, dictionaries, and nested
+  objects — appears correctly in the output.
+- Specific known issue: Unity's `JsonUtility.ToJson` silently drops
+  `Dictionary<K,V>` fields and other non-serializable types with no error or warning.
+  Any project using `JsonUtility` for domain request serialization must be considered
+  at risk until verified.
+- If fields are missing, replace or fix the serializer (e.g. switch to
+  Newtonsoft `JsonConvert.SerializeObject`) before beginning adapter migration.
+- Confirm the field naming convention (camelCase, PascalCase, etc.) in the output
+  matches the prompt shape the model expects.
+
+Rationale: if the serializer silently drops fields, the model has been receiving
+incomplete context for the entire lifetime of the project. Prompt-parity A/B comparison
+is meaningless until the serializer output is correct — you would be comparing two
+wrong things against each other.
 
 ## Not authoritative here
 This document does not define:

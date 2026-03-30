@@ -3,7 +3,7 @@
 **Status:** Active reference  
 **Doc Type:** Validation / Manual Regression Reference  
 **Authority:** Secondary  
-**Date:** 2026-03-16
+**Date:** 2026-03-29
 
 ## Usage note
 This file validates current behavior but does not define subsystem truth. If a test description and an SSoT disagree, the SSoT wins and the test doc must be updated.
@@ -137,13 +137,43 @@ Expected:
 ---
 
 ## 8) Pricing estimate (optional)
-1. Enable “Estimate Cost”
-2. Assign a Pricing Catalog (or rely on ClientData pricing fields)
-3. Send a prompt
+1. Enable “Estimate Cost”.
+2. Create/select a Pricing Catalog asset.
+3. Apply or refresh OpenAI defaults into that catalog.
+4. Confirm the current runtime `modelId` exists in the catalog for the active provider/tier.
+   - Good regression examples: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.2`.
+5. Assign the Pricing Catalog to the wizard/tooling path.
+6. Send a prompt.
 
 Expected:
-- A cost estimate appears and does not crash
-- Estimate updates based on usage values
+- A cost estimate appears and does not crash.
+- Estimate updates based on usage values.
+- The estimate is resolved from the catalog when a matching catalog entry exists.
+
+### 8.1 Catalog precedence check
+1. Set obviously different rates in the Pricing Catalog for the active model.
+2. Also set different fallback pricing fields on the ClientData asset.
+3. Send a prompt.
+
+Expected:
+- The visible estimate uses the catalog values, not the ClientData fallback values.
+
+### 8.2 Client fallback check
+1. Remove or disable the matching catalog entry for the active model.
+2. Leave ClientData pricing fields populated.
+3. Send a prompt.
+
+Expected:
+- The estimate still appears and now uses the ClientData fallback path.
+
+### 8.3 No-pricing path check
+1. Remove the matching catalog entry.
+2. Clear the ClientData fallback pricing fields.
+3. Send a prompt.
+
+Expected:
+- The request still succeeds.
+- The tool shows no estimate (or an explicit no-pricing state) rather than crashing.
 
 ---
 

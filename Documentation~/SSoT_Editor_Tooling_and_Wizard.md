@@ -8,7 +8,8 @@
 This document defines the implemented truth for:
 - `LLMEnvSetupWindow`,
 - `LLMAgentWizardWindow`,
-- editor-layer policies around instructions, rebuilds, history usage, file flow, and editor-owned workflow bridging.
+- editor-layer policies around instructions, rebuilds, history usage, file flow, and editor-owned workflow bridging,
+- and the shared estimate-precedence rule reused by adjacent editor tooling.
 
 ## 1) Canonical editor surfaces
 
@@ -95,6 +96,17 @@ Current estimate precedence:
 3. no estimate if neither source has usable rates.
 
 The wizard may optionally treat reasoning tokens as output tokens for estimation.
+
+
+### 6.1 Adjacent tooling note — NIC Workbench
+`NIC Conversation Workbench` uses the same estimate precedence as the wizard:
+1. pricing catalog entry for current provider/model/tier,
+2. per-client pricing fields as fallback,
+3. no estimate if neither source has usable rates.
+
+Unlike the wizard, NIC Workbench persists a per-attempt pricing snapshot into its session/diagnostic records so historical attempts do not drift when the current catalog or client fallback values change later.
+
+This document does not become the primary authority for NIC Workbench behavior. The primary tooling home for that remains `Docs/reference/editor-tools/nic-editor-tooling.md`.
 
 ## 7) Ping behavior
 Ping is a lightweight editor smoke test and should not be documented as a formal provider contract. It is a tool behavior for quick validation.

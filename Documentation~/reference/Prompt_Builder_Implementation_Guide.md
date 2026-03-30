@@ -3,7 +3,7 @@
 **Status:** Active reference  
 **Doc Type:** Reference / Implementation Guide  
 **Authority:** Secondary  
-**Date:** 2026-03-17
+**Date:** 2026-03-29 (updated — NIC integration lessons added)
 
 ## Current alignment notes
 This document is implementation guidance, not the primary truth for package semantics.
@@ -198,6 +198,46 @@ Use this when:
 
 This is a complete and acceptable integration path.
 
+### 3.4 Consider a two-level entry point for complex agents
+
+When the agent has a **multi-step assembly phase before the prompt** — such as seed
+selection, domain-object lookup, or request construction — consider splitting the
+generation core into two layered entry points rather than one monolithic method:
+
+- **Upper entry point** — accepts raw domain objects; handles pre-prompt assembly,
+  then delegates to the lower entry point.
+- **Lower entry point** — accepts a pre-assembled prompt input; handles only
+  build → execute → parse → validate.
+
+This split is valuable because:
+- The lower entry point is directly testable without constructing full domain graphs.
+- Targeted retry can re-enter at the lower level with a modified prompt input, without
+  repeating expensive domain assembly.
+- It makes the boundary between "what feeds the prompt" and "what the prompt does"
+  explicit and auditable.
+
+```csharp
+// Upper: full pipeline from raw domain inputs
+public static async Task<ExampleResult> GenerateForEntityAsync(
+    ILLMClient client, ExampleGenerationInput input)
+{
+    var assembled = AssembleRequest(input); // domain assembly
+    var promptInput = new ExamplePromptBuildInput { Request = assembled, ... };
+    return await GenerateFromPromptInputAsync(client, promptInput);
+}
+
+// Lower: prompt → execute → parse → validate only
+public static async Task<ExampleResult> GenerateFromPromptInputAsync(
+    ILLMClient client, ExamplePromptBuildInput promptInput)
+{
+    var build = builder.Build(promptInput);
+    // ... execute, parse, validate
+}
+```
+
+Do not force this split on a truly simple agent. Add it when pre-prompt assembly is
+non-trivial or when a test harness needs to inject specific prompt inputs directly.
+
 ---
 
 ## 4) Existing project migration quickstart
@@ -207,14 +247,49 @@ This is the safest path when the project already has prompt-building code.
 Adopt LLM Core with the **smallest behavior change possible**.
 
 ### 4.2 Recommended sequence
-1. Keep the legacy builder intact.
-2. Create an adapter implementing `IPromptBuilder<TInput>`.
-3. Map legacy output into `PromptBuildResult`.
-4. Compare only:
-   - `InstructionsText`
-   - `UserPromptText`
-5. Block send on mismatch during migration.
-6. Move optional layers only after prompt parity is confirmed.
+
+**Step 0 — Audit the serializer first.**
+
+Before building the adapter, verify that the existing serializer correctly outputs
+all fields in the request payload. This step comes before everything else.
+
+Why: Unity's `JsonUtility.ToJson` silently drops `Dictionary<K,V>` fields and other
+non-serializable types. If the payload sent to the model has been silently missing
+data, you will spend migration effort A/B comparing two wrong prompts. Fixing the
+serializer first means you are comparing the correct output from the start.
+
+Checklist:
+- Serialize a representative domain object with the current serializer.
+- Inspect the output for every expected field, especially collections and dictionaries.
+- If any fields are missing, fix the serializer (e.g. replace `JsonUtility` with
+  Newtonsoft `JsonConvert`) before proceeding.
+- Confirm the field naming convention (camelCase vs PascalCase) matches what the
+  model prompt expects.
+
+**Step 1 — Keep the legacy builder intact.**
+
+**Step 2 — Create an adapter implementing `IPromptBuilder<TInput>`.**
+
+**Step 3 — Map legacy output into `PromptBuildResult`.**
+
+**Step 4 — Compare only:**
+- `InstructionsText`
+- `UserPromptText`
+
+**Step 5 — Block send on mismatch during migration.**
+
+**Step 6 — Audit all existing callers for bypass.**
+
+Before finalising migration, enumerate every call site that previously invoked the
+legacy generation path. Verify that all of them now route through the new shared core
+or adapter. Silent bypass is the most common migration trap: the system continues
+working (the old path still functions), so there is no error to alert you. But
+diagnostic data, parameter threading, and trace fields will be silently absent in the
+bypassing callers.
+
+See Section 4.6 for the bypass audit pattern.
+
+**Step 7 — Move optional layers only after prompt parity is confirmed.**
 
 ### 4.3 Why this order matters
 It keeps migration noise low.
@@ -226,7 +301,8 @@ Do **not** make these changes all at once:
 - retry migration,
 - orchestration migration.
 
-First prove prompt parity. Then add optional layers incrementally.
+First prove prompt parity and serializer correctness. Then add optional layers
+incrementally.
 
 ### 4.4 Migration pattern from a legacy builder
 When migrating an older project-specific builder, the safest approach is often an **adapter**.
@@ -272,6 +348,80 @@ If the migration later introduces orchestration:
 - do not replace the whole project workflow at once,
 - keep domain-specific apply / merge / candidate logic outside shared core unless repetition is proven.
 
+### 4.6 Caller bypass audit
+
+After routing the new shared core into place, explicitly check that all existing callers
+route through it. This is not always obvious.
+
+**Why this matters:** A shared core that is bypassed by existing callers provides zero
+actual benefit to those callers. Their diagnostic fields, parameter threading, and trace
+data will all be absent — but no error is raised. The system appears to work normally.
+
+**Audit pattern:**
+1. Search for every call site that previously invoked the legacy path (old service
+   method, old builder method, old direct LLM call, etc.).
+2. Confirm each one now routes through the new shared core.
+3. Specifically check editor runners, batch runners, and any async wrapper that may
+   have been written before the shared core existed.
+4. Do not assume that because the runtime service was rerouted, the editor runner was
+   too — these are typically separate entry points.
+
+**What to look for:**
+- An editor runner that creates a service instance and calls it directly, bypassing the
+  core that wraps the service.
+- A legacy convenience method that still exists and still works, which callers silently
+  continue to use.
+- A wrapper written during an earlier phase that predates the shared core and was never
+  updated.
+
+**When bypass is found:** Re-route the bypassing caller through the shared core.
+Do not delete the old path until all callers have been migrated and verified.
+
+### 4.7 Null-safe additive DTO extension
+
+When adding new optional parameters to an existing input DTO, use a **null-safe
+additive pattern** to guarantee zero behavioral change for all existing callers:
+
+- Add the new field as nullable (a reference type, or a value type wrapped in
+  `Nullable<T>`).
+- Treat null as "use defaults / no change."
+- Add an `IsAllDefaults()` guard in any logic that consumes the new field. When all
+  values are at defaults (or null), the output must be byte-for-byte identical to
+  pre-extension behavior.
+- Existing callers never need to be updated; they pass null implicitly and observe no
+  change.
+
+```csharp
+// Before
+public sealed class ExamplePromptBuildInput
+{
+    public string Topic;
+    public PromptBuildMode Mode = PromptBuildMode.Default;
+}
+
+// After — ExistingParameters extension, backwards safe
+public sealed class ExamplePromptBuildInput
+{
+    public string Topic;
+    public PromptBuildMode Mode = PromptBuildMode.Default;
+    public ExampleParameters Parameters; // null = no change
+}
+```
+
+```csharp
+// In the builder
+if (parameters != null && !parameters.IsAllDefaults())
+{
+    // append parameter directives
+}
+// else: output identical to before
+```
+
+Thread this field through every layer of the pipeline in the same additive way. Each
+intermediate DTO (generation input, generation request, runner) gets the same nullable
+field and the same null-pass-through pattern. The full chain can be extended safely
+with one field at a time.
+
 ---
 
 ## 5) Boundary map
@@ -284,7 +434,10 @@ A builder should own:
 - build-mode branching,
 - optional retry context usage,
 - optional logical artifact hints,
-- optional consumption of prebuilt contract hints.
+- optional consumption of prebuilt contract hints,
+- optional population of `InstructionSections` and `UserSections` for editor
+  diagnostic visibility (see Section 7),
+- optional population of `Metadata` for trace/diagnostic labelling.
 
 ### 5.2 What does **not** belong in a Prompt Builder
 A builder should **not** own:
@@ -479,6 +632,54 @@ Do **not** add orchestration just because it exists.
 
 The minimal builder path remains valid even after later tiers are available.
 
+### 6.6 Additive runtime parameters
+
+Use an **additive directives block** when the agent needs per-run behavioral
+configuration (language, length limits, output constraints, content rules) without
+modifying the base agent instructions asset.
+
+The pattern:
+- Store configurable values in a plain parameters class (not inside the builder).
+- Pass parameters into the builder via the input DTO as a nullable field.
+- In the builder, compose a structured directives block and **append** it to the base
+  instructions text. Do not rewrite the base instructions.
+- Guard the append behind an `IsAllDefaults()` check: when all parameters are at
+  defaults, the output is byte-for-byte identical to the no-parameters case.
+- Include an explicit "these override base instructions if there is a conflict" preamble
+  in the directives block.
+
+```csharp
+private static string ComposeInstructions(string baseInstructions, ExampleParameters p)
+{
+    if (p == null || p.IsAllDefaults())
+        return baseInstructions ?? "";
+
+    var sb = new StringBuilder();
+    sb.Append(baseInstructions ?? "");
+    sb.Append("\n\n---\n## GENERATION PARAMETERS (override rules for this run)\n");
+    sb.Append("Apply these rules IN ADDITION to your base instructions. " +
+              "Where these conflict with base instructions, these take priority.\n\n");
+
+    if (!string.IsNullOrEmpty(p.Language))
+        sb.AppendLine($"**LANGUAGE:** Generate all output in **{p.Language}**.");
+
+    // ... other parameter lines ...
+
+    return sb.ToString();
+}
+```
+
+Benefits:
+- Teams can change generation behavior (e.g. language, length, content rules) per-run
+  via a ScriptableObject preset without touching the agent instructions asset.
+- `IsAllDefaults()` ensures the base behavior is never accidentally altered when no
+  parameters are active.
+- The "override" preamble ensures the model applies the directives even when they
+  conflict with older base instructions.
+
+Wrap this class as a ScriptableObject when you need preset assets that can be loaded
+from the editor or assigned at runtime.
+
 ---
 
 ## 7) Editor integration pattern
@@ -498,17 +699,66 @@ A good migration setup usually has:
 - compare button,
 - status label showing `A/B PASS` or `A/B FAIL`.
 
+### 7.1 Populate diagnostic sections for editor visibility
+
+When the builder is used from an editor window, populate `InstructionSections`,
+`UserSections`, and `Metadata` on `PromptBuildResult`. These fields exist precisely
+for inspector / diagnostics use and avoid forcing the window to re-parse the composed
+prompt strings to understand their structure.
+
+**`InstructionSections`** — break the instructions into labeled parts. Useful when the
+composed instructions are the concatenation of multiple logical pieces (e.g. base agent
+instructions + generation parameter directives):
+
+```csharp
+InstructionSections = new List<PromptSection>
+{
+    new PromptSection { Label = "Agent Instructions", Text = baseInstructions },
+    new PromptSection { Label = "Parameter Directives", Text = directives }
+}
+```
+
+**`UserSections`** — break the user prompt into labeled diagnostic parts. Useful when
+the user payload contains a serialized domain object plus derived summaries:
+
+```csharp
+UserSections = new List<PromptSection>
+{
+    new PromptSection { Label = "Request JSON", Text = serializedPayload },
+    new PromptSection { Label = "Seed Summary", Text = $"{seedCount} seed(s)" }
+}
+```
+
+**`Metadata`** — store quick-glance diagnostic values the window can show without
+opening foldouts:
+
+```csharp
+Metadata = new Dictionary<string, string>
+{
+    ["traceId"] = input.TraceId,
+    ["npcTag"] = req.character.tag,
+    ["hasParameters"] = "true"
+}
+```
+
+The editor window then surfaces each section as a foldout, label, or table without any
+string parsing. This is especially valuable when parameters are active, because the
+window can show "NIC Agent Instructions" and "Generation Parameter Directives" as
+separate inspectable sections.
+
 ---
 
 ## 8) Progressive adoption checklist for a new agent
 
 ### Tier 1 — Minimal builder
+- [ ] Serializer audit complete (all expected fields present in output)
 - [ ] Input DTO is explicit and agent-specific
 - [ ] Builder implements `IPromptBuilder<TInput>`
 - [ ] Builder returns `InstructionsText` + `UserPromptText`
 - [ ] Build mode is explicit when needed
 - [ ] Builder returns logical prompt output only
 - [ ] Execution stays outside the builder
+- [ ] All callers route through the new shared core (bypass audit complete)
 
 ### Tier 2 — Contract hints (optional)
 - [ ] Contract hints remove real anti-drift duplication
@@ -519,6 +769,7 @@ A good migration setup usually has:
 - [ ] Shared validation surfaces solve a real structured-output problem
 - [ ] Validators adapt existing workflow artifacts instead of replacing domain semantics prematurely
 - [ ] Repair hints remain optional and composable
+- [ ] Agent instructions and validator reflect the same output contract
 
 ### Tier 4 — Retry-aware flow (optional)
 - [ ] Retry classification is only added when post-validation retry behavior is genuinely reusable
@@ -542,6 +793,22 @@ A good migration setup usually has:
 - Letting validation surfaces drift into deterministic autofix or project-specific workflow policy
 - Treating contract hints as if they replace agent-specific prompt authorship
 - Treating orchestration as a required default instead of a later optional layer
+- **Not auditing the existing serializer before starting migration.** If the legacy
+  path used `JsonUtility` (or any serializer that silently drops certain types), the
+  payload reaching the model may have been silently missing fields for a long time.
+  Fix the serializer first; otherwise you are A/B comparing two incorrect prompts.
+- **Not auditing callers for shared-core bypass.** Introducing a shared core does not
+  automatically reroute callers that predate it. Editor runners, batch runners, and
+  legacy convenience wrappers will silently continue using the old path. No error is
+  raised; the system works normally; diagnostic data and parameter threading are just
+  absent. Always enumerate and verify all callers after introducing a new shared
+  convergence point.
+- **Letting agent instructions and the validator diverge.** The instructions tell the
+  model what to produce. The validator checks that it did. If they reflect different
+  contracts (e.g. instructions say "empty arrays for terminal nodes" but the validator
+  doesn't check for stray empty strings in `NextNodeIds`), failures will appear to be
+  model misbehavior rather than specification drift. Keep them in sync whenever either
+  changes.
 
 ---
 
@@ -567,5 +834,10 @@ If you only remember four rules, remember these:
 
 1. A minimal builder is still a valid integration.
 2. Execution stays outside the builder.
-3. Migrate existing projects through an adapter first.
+3. Migrate existing projects through an adapter first — but audit the serializer before the adapter.
 4. Add later layers only when they solve a real repeated problem.
+
+And two migration-specific rules:
+
+5. After introducing a shared core, explicitly verify every caller routes through it.
+6. Keep agent instructions and the structural validator in sync.

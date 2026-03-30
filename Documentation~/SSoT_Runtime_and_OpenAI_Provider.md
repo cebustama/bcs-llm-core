@@ -2,7 +2,7 @@
 
 **Status:** Active  
 **Authority:** Primary for runtime/client/provider semantics  
-**Date:** 2026-03-17
+**Date:** 2026-03-29
 
 ## Scope
 This document defines the implemented truth for:
@@ -30,6 +30,7 @@ It is not the place for provider-specific endpoint semantics beyond abstract pro
 `OpenAIClientData` specializes `LLMClientData` with:
 - the OpenAI API-variant choice,
 - a stable enum-backed model selector,
+- an explicit compatibility-vs-current model selection policy,
 - env/settings-backed resolution of base URL and endpoints.
 
 ### 1.3 `LLMAgentData`
@@ -205,6 +206,20 @@ The provider supports two text-generation request paths:
 - **Responses**
 
 The active path is selected by `OpenAIClientData.ApiVariant`.
+
+### 4.2.1 Model selector policy
+`OpenAIClientData` may intentionally keep a mix of:
+- current / recommended model IDs,
+- compatibility IDs still needed to preserve older serialized assets,
+- and optional specialized IDs used only in some workflows.
+
+Current implementation guidance:
+- keep legacy enum members in place when changing the selector so Unity asset serialization does not shift unexpectedly,
+- prefer current general-purpose IDs such as `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, and `gpt-5.2` for new text-first configs,
+- treat `gpt-5-mini` / `gpt-5-nano` as distinct IDs from `gpt-5.4-mini` / `gpt-5.4-nano`,
+- keep older expensive / superseded IDs only when there is a real compatibility, reproducibility, or migration reason.
+
+The runtime/provider layer does not itself decide which models should be shown prominently in editor UX. That presentation policy remains editor-owned.
 
 ### 4.3 Chat Completions path
 The Chat Completions request path:

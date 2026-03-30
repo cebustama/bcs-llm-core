@@ -1,3 +1,13 @@
+## 2026-03-29 — OpenAI model selector and pricing-pipeline alignment
+- Updated `SSoT_Runtime_and_OpenAI_Provider.md` to record the current `OpenAIClientData` model-selector policy:
+  - preserve legacy enum members for Unity serialization safety,
+  - keep current and compatibility IDs conceptually distinct,
+  - and explicitly distinguish `gpt-5-mini` / `gpt-5-nano` from `gpt-5.4-mini` / `gpt-5.4-nano`.
+- Updated `SSoT_Pricing_Pipeline.md` to clarify that OpenAI pricing bootstrap coverage must stay aligned with the exact `modelId` strings exposed by `OpenAIClientData`, not just a loosely similar family name.
+- Added a practical pricing refresh / usage loop to `SSoT_Pricing_Pipeline.md` so editor/tool users can re-seed and verify pricing coverage without re-learning the subsystem from code.
+- Recorded current OpenAI pricing caveats in `SSoT_Pricing_Pipeline.md` for long-context `gpt-5.4` / `gpt-5.4-pro`, regional-processing uplift on the GPT-5.4 family mini/nano/pro entries, and the cached-input = `0` bootstrap rule when the official source does not list a cached-input price.
+- Updated `reference/llm-agent-wizard-test-cases.md` with explicit pricing regression checks for catalog precedence, client fallback, and the no-pricing path.
+
 # Semantic Changelog — BCS / Eon LLM Core
 
 ## 2026-03-17 — Prompt Builder Phase 5 / Minimal orchestration pipeline

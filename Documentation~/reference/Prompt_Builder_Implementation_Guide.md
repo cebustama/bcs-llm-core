@@ -3,7 +3,7 @@
 **Status:** Active reference  
 **Doc Type:** Reference / Implementation Guide  
 **Authority:** Secondary  
-**Date:** 2026-03-29 (updated — NIC integration lessons added)
+**Date:** 2026-03-30 (updated — world-object enrichment pattern added)
 
 ## Current alignment notes
 This document is implementation guidance, not the primary truth for package semantics.
@@ -238,6 +238,72 @@ public static async Task<ExampleResult> GenerateFromPromptInputAsync(
 Do not force this split on a truly simple agent. Add it when pre-prompt assembly is
 non-trivial or when a test harness needs to inject specific prompt inputs directly.
 
+### 3.5 Resolving internal entity identifiers before prompt assembly
+
+When the prompt payload contains **internal entity identifiers** — tags, keys, IDs, or
+any string the codebase uses to reference world objects, actions, or named entities —
+run a display-name resolution step during the upper-entry domain assembly phase, before
+serializing the request payload.
+
+**Why this matters.** The model cannot infer a human-readable name from an opaque
+internal tag. Tags that reach the model unresolved re-emerge verbatim in generated
+output — inside dialogue lines, node labels, and other text the player sees. This is
+**tag leakage**, and it is a content-quality defect, not a runtime error, so it
+produces no exception and no obvious failure signal.
+
+**The fix pattern.** Add an entity-lookup block to your assembled request DTO — a flat
+list of `{ tag, displayName, (optional) description }` entries covering every entity
+tag present in seeds, player actions, or other payload fields. Populate this block
+during the upper-entry domain assembly phase. The builder serializes it into the user
+prompt alongside the rest of the request; the model then has the display names
+available to use in generated text.
+
+```csharp
+// In the upper entry point, after seeds are selected:
+var worldObjects = ResolveDisplayNames(seeds, playerActions, itemRepository);
+
+var request = new ExampleRequest
+{
+    // ... other fields ...
+    entityLookup = worldObjects   // tag → displayName, resolved before serialization
+};
+```
+
+**Placement rules.**
+
+- The lookup/repository used for resolution belongs in the **upper entry point** only,
+  passed in as an optional parameter on the generation input.
+- It must **not** reach the builder or the lower entry point. The builder receives an
+  already-resolved request DTO; it has no business knowing about lookup infrastructure.
+- Partial resolution is expected and acceptable. When a tag has no registered display
+  name, omit it from the lookup block rather than crashing. The model will fall back to
+  the raw tag for that entry; log the miss for diagnostic review.
+
+**Optional parameter pattern.**
+
+Inject the repository as a nullable field on the generation input, not as a required
+constructor argument. This keeps the change backwards-safe: callers that do not provide
+it observe no behavioral change (the lookup block is empty and no tag leakage is
+introduced beyond what already existed).
+
+```csharp
+// Generation input — backwards-safe extension
+public sealed class ExampleGenerationInput
+{
+    public LocationData Location;
+    public NpcData Npc;
+    // ... existing fields ...
+
+    // Nullable: callers that omit this get an empty lookup block, not an error.
+    public IExampleItemRepository ItemRepository;
+}
+```
+
+**Scope.** Cover only the entity tags that appear in the current request payload:
+seeds, player actions, and any other fields the model will read. Do not enumerate
+the entire world asset catalogue — the lookup block is per-request, not a world
+dictionary.
+
 ---
 
 ## 4) Existing project migration quickstart
@@ -448,7 +514,9 @@ A builder should **not** own:
 - editor-only busy-state/UI logic,
 - domain-independent runtime client creation,
 - mandatory validation/repair plumbing for every agent,
-- schema/DTO/enums as an implied new source of truth for domain semantics.
+- schema/DTO/enums as an implied new source of truth for domain semantics,
+- entity-lookup repositories or display-name resolution logic (those belong in the
+  upper-entry domain assembly phase — see Section 3.5).
 
 ### 5.3 What belongs in execution helpers
 Execution helpers may own:
@@ -746,6 +814,38 @@ string parsing. This is especially valuable when parameters are active, because 
 window can show "NIC Agent Instructions" and "Generation Parameter Directives" as
 separate inspectable sections.
 
+### 7.2 Record resolution coverage in the attempt trace
+
+When the upper-entry domain assembly phase includes an entity-tag resolution step
+(see Section 3.5), record its coverage in the attempt trace rather than discarding
+that information after assembly completes.
+
+The pattern is to capture two lists:
+
+- **Resolved entries** — tags that were successfully matched to a display name,
+  formatted as `"tag → displayName"` for quick scanning.
+- **Fallback entries** — tags that appeared in the payload (seeds, player actions, etc.)
+  but were not found in the lookup repository, meaning the raw tag was used instead.
+
+```csharp
+// In the trace builder, after domain assembly:
+trace.WorldObjectsResolved = resolvedEntries;   // string[], each "tag → DisplayName"
+trace.WorldObjectsFallback = fallbackTags;      // string[], raw tag only
+```
+
+The editor window (or any inspector panel) can then surface these two lists directly
+— no string parsing needed — and a non-empty `Fallback` list is an immediate signal
+that the lookup repository is incomplete for the current world configuration.
+
+This is especially valuable during authoring and QA: a designer can inspect a
+generation session, see that `poi_blacksmith` resolved correctly to `"The Iron & Ember
+Smithy"` but `poi_hidden_cache` is in the fallback list, and know exactly which asset
+needs a display name authored before the next generation pass.
+
+**Rule:** record coverage for every attempt that reaches the domain assembly stage,
+including failed attempts. A failed attempt with unresolved tags is still diagnostic
+information.
+
 ---
 
 ## 8) Progressive adoption checklist for a new agent
@@ -759,6 +859,14 @@ separate inspectable sections.
 - [ ] Builder returns logical prompt output only
 - [ ] Execution stays outside the builder
 - [ ] All callers route through the new shared core (bypass audit complete)
+
+### Tier 1.5 — Entity resolution (when payload contains internal identifiers)
+- [ ] Internal entity tags identified in the request payload
+- [ ] Lookup repository injected as nullable field on the generation input only
+- [ ] Resolution runs in the upper-entry domain assembly phase, not in the builder
+- [ ] Partial resolution handled gracefully (missing tags omitted, not errors)
+- [ ] Resolution coverage recorded in the attempt trace (resolved + fallback lists)
+- [ ] Fallback list surfaced in the editor window or inspector panel
 
 ### Tier 2 — Contract hints (optional)
 - [ ] Contract hints remove real anti-drift duplication
@@ -809,6 +917,15 @@ separate inspectable sections.
   doesn't check for stray empty strings in `NextNodeIds`), failures will appear to be
   model misbehavior rather than specification drift. Keep them in sync whenever either
   changes.
+- **Letting internal entity tags reach the LLM payload unresolved.** When the prompt
+  payload contains entity references — POI tags, item keys, action identifiers, or any
+  other internal string used to address a world object — sending the raw tag rather
+  than the human-readable display name causes the model to reproduce those tags
+  verbatim in generated output (dialogue lines, node labels, descriptions). This is
+  **tag leakage**: a content-quality defect that produces no runtime error and no
+  obvious failure signal. Fix: run a display-name resolution step in the upper-entry
+  domain assembly phase and populate an entity lookup block in the assembled request
+  before serializing. See Section 3.5 for the full pattern.
 
 ---
 
@@ -841,3 +958,8 @@ And two migration-specific rules:
 
 5. After introducing a shared core, explicitly verify every caller routes through it.
 6. Keep agent instructions and the structural validator in sync.
+
+And one payload-quality rule:
+
+7. Resolve internal entity tags to human-readable display names before serializing the
+   request payload. Raw tags that reach the model re-emerge in generated output.

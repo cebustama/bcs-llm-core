@@ -58,6 +58,7 @@
 |   +---Pricing
 |   |   +---LLMModelPricingCatalogSO.cs
 |   |   +---LLMPricingEstimator.cs
+|   |   +---LLMPricingResolution.cs
 |   |   \---OpenAIPricingCatalogExtensions.cs
 |   +---Prompts
 |   |   +---IContractHintProvider.cs
@@ -84,6 +85,7 @@
 |   \---BCS.LLM.Core.Runtime.asmdef
 +---Samples~
 +---.gitignore
++---Documentation~.zip
 +---make-tree-unity.bat
 +---package.json
 \---README.md

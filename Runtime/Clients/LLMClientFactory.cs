@@ -1,3 +1,4 @@
+using BCS.LLM.Core.Anthropic;
 using BCS.LLM.Core.OpenAI;
 using UnityEngine;
 using static BCS.LLM.Core.Clients.LLMClientData;
@@ -18,12 +19,16 @@ namespace BCS.LLM.Core.Clients
             {
                 case LLMProvider.OpenAI:
                     return new OpenAILLMClient(clientData as OpenAIClientData);
-/*
-                case LLMProvider.Gemini:
-                    return new GeminiLLMClient(clientData as GeminiClientData);
-                case LLMProvider.Azure:
-                    return new AzureLLMClient(clientData as AzureClientData);
-*/
+
+                case LLMProvider.Anthropic:
+                    return new AnthropicLLMClient(clientData as AnthropicClientData);
+
+                /*
+                                case LLMProvider.Gemini:
+                                    return new GeminiLLMClient(clientData as GeminiClientData);
+                                case LLMProvider.Azure:
+                                    return new AzureLLMClient(clientData as AzureClientData);
+                */
                 default:
                     Debug.LogError($"Unsupported LLM Provider: {clientData.Provider}");
                     return null;

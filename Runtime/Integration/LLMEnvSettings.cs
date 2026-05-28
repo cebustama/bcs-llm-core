@@ -27,5 +27,9 @@ namespace BCS.LLM.Core.Env
 
         [Tooltip("Default Files endpoint used when OPENAI_FILES_ENDPOINT is not provided.")]
         public string openAIFilesEndpoint = "/v1/files";
+
+        [Header("Anthropic")]
+        public string anthropicBaseUrl = "https://api.anthropic.com";
+        public string anthropicMessagesEndpoint = "/v1/messages";
     }
 }

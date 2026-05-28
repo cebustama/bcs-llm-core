@@ -1,0 +1,48 @@
+# LLM Core - pack curado para workshop Claude (~13 archivos)
+#
+# Cobertura: Tier 1 (espinazo del builder + transporte + sustrato de agente)
+# + docs Tier 1 imprescindibles.
+#
+# Rutas confirmadas desde tree.txt del paquete com.BCS.llm-core.
+#
+# Uso:
+#   1. Renombra este archivo a "files.txt".
+#   2. Ejecuta el .bat con la raiz del paquete com.BCS.llm-core como argumento,
+#      o copia el .bat dentro de la raiz y ejecutalo sin argumento.
+#
+# Nota sobre Documentation~:
+#   El "~" es parte literal del nombre de carpeta (convencion Unity para
+#   excluir del import pipeline). El .bat lo trata literalmente, sin expansion.
+
+# ===========================================================================
+# Prompt Builder - el contrato y soporte
+# ===========================================================================
+Runtime/Prompts/IPromptBuilder.cs
+Runtime/Prompts/PromptBuildResult.cs
+Runtime/Prompts/PromptBuildContext.cs
+Runtime/Prompts/PromptBuildMode.cs
+
+# ===========================================================================
+# Prompt Execution - ejecucion reusable sobre ILLMClient
+# ===========================================================================
+Runtime/Prompts/PromptExecutionHelper.cs
+Runtime/Prompts/PromptExecutionOptions.cs
+
+# ===========================================================================
+# Provider / transporte
+# ===========================================================================
+Runtime/Clients/ILLMClient.cs
+
+# ===========================================================================
+# Agente sustrato - unidad de autoria
+# ===========================================================================
+Runtime/Agents/LLMAgentData.cs
+Runtime/Agents/LLMAgentInstructionsData.cs
+
+# ===========================================================================
+# Documentacion gobernada Tier 1
+# ===========================================================================
+Documentation~/SSoT_Runtime_and_OpenAI_Provider.md
+Documentation~/SSoT_CONTRACTS.md
+Documentation~/reference/Prompt_Builder_Implementation_Guide.md
+Documentation~/README.md

@@ -10,7 +10,8 @@ namespace BCS.LLM.Core.Clients
         {
             OpenAI,
             Gemini,
-            Azure
+            Azure,
+            Anthropic, // appended for serialization safety (D-AC1)
         }
 
         public virtual LLMProvider Provider { get; } // Virtual property for provider type
